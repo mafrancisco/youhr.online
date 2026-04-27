@@ -1,0 +1,184 @@
+<script setup>
+import { ref, reactive } from 'vue'
+import { useForm, router } from '@inertiajs/vue3'
+import AppLayout from '@/Layouts/AppLayout.vue'
+import Modal from '@/Components/Modal.vue'
+import PrimaryButton from '@/Components/PrimaryButton.vue'
+import FlashMessage from '@/Components/FlashMessage.vue'
+
+defineProps({ schedules: Array })
+
+const DAYS = [
+  { key: 'm',   label: 'Monday' },
+  { key: 't',   label: 'Tuesday' },
+  { key: 'w',   label: 'Wednesday' },
+  { key: 'th',  label: 'Thursday' },
+  { key: 'f',   label: 'Friday' },
+  { key: 'sat', label: 'Saturday' },
+  { key: 'sun', label: 'Sunday' },
+]
+
+function blankSlots() {
+  const slots = {}
+  DAYS.forEach(({ key }) => {
+    slots[`${key}_timein`]   = ''
+    slots[`${key}_breakout`] = ''
+    slots[`${key}_breakin`]  = ''
+    slots[`${key}_timeout`]  = ''
+    slots[`${key}_crossday`] = false
+  })
+  return slots
+}
+
+const modalMode   = ref(null)
+const editTarget  = ref(null)
+
+const form = useForm({ schedulename: '', ...blankSlots() })
+
+function openAdd() {
+  form.reset()
+  form.clearErrors()
+  Object.assign(form, blankSlots())
+  editTarget.value = null
+  modalMode.value  = 'add'
+}
+
+function openEdit(sched) {
+  form.reset()
+  form.clearErrors()
+  form.schedulename = sched.schedulename
+  DAYS.forEach(({ key }) => {
+    form[`${key}_timein`]   = sched[`${key}_timein`]   ?? ''
+    form[`${key}_breakout`] = sched[`${key}_breakout`] ?? ''
+    form[`${key}_breakin`]  = sched[`${key}_breakin`]  ?? ''
+    form[`${key}_timeout`]  = sched[`${key}_timeout`]  ?? ''
+    form[`${key}_crossday`] = sched[`${key}_crossday`] ?? false
+  })
+  editTarget.value = sched
+  modalMode.value  = 'edit'
+}
+
+function closeModal() {
+  modalMode.value  = null
+  editTarget.value = null
+  form.reset()
+  form.clearErrors()
+}
+
+function submit() {
+  if (modalMode.value === 'add') {
+    form.post('/schedules', { onSuccess: closeModal })
+  } else {
+    form.put(`/schedules/${editTarget.value.id}`, { onSuccess: closeModal })
+  }
+}
+
+function destroy(sched) {
+  if (!confirm(`Delete schedule "${sched.schedulename}"?`)) return
+  router.delete(`/schedules/${sched.id}`)
+}
+
+function activeDays(sched) {
+  return DAYS.filter(({ key }) => sched[`${key}_timein`]).map(d => d.label.slice(0, 3)).join(', ')
+}
+</script>
+
+<template>
+  <AppLayout title="Schedules">
+    <FlashMessage />
+
+    <div class="flex items-center justify-between mb-5">
+      <h2 class="text-base font-semibold text-gray-700">Schedules ({{ schedules.length }})</h2>
+      <PrimaryButton @click="openAdd">+ Add Schedule</PrimaryButton>
+    </div>
+
+    <div class="bg-white rounded-xl shadow overflow-hidden">
+      <table class="w-full text-sm">
+        <thead class="bg-gray-50 text-gray-500 text-xs uppercase tracking-wide">
+          <tr>
+            <th class="px-4 py-3 text-left">Name</th>
+            <th class="px-4 py-3 text-left">Active Days</th>
+            <th class="px-4 py-3"></th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-gray-100">
+          <tr v-for="sched in schedules" :key="sched.id" class="hover:bg-gray-50">
+            <td class="px-4 py-3 font-medium text-gray-900">{{ sched.schedulename }}</td>
+            <td class="px-4 py-3 text-gray-500 text-xs">{{ activeDays(sched) || '—' }}</td>
+            <td class="px-4 py-3 text-right whitespace-nowrap">
+              <button @click="openEdit(sched)" class="text-blue-600 hover:underline text-xs mr-3">Edit</button>
+              <button @click="destroy(sched)" class="text-red-500 hover:underline text-xs">Delete</button>
+            </td>
+          </tr>
+          <tr v-if="!schedules.length">
+            <td colspan="3" class="px-4 py-8 text-center text-gray-400">No schedules yet.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Add / Edit modal -->
+    <Modal :show="modalMode !== null" size="xl" @close="closeModal">
+      <template #header>{{ modalMode === 'add' ? 'Add Schedule' : 'Edit Schedule' }}</template>
+
+      <template #body>
+        <form @submit.prevent="submit" id="sched-form">
+          <div class="mb-4">
+            <label class="block text-xs font-medium text-gray-700 mb-1">Schedule Name</label>
+            <input v-model="form.schedulename" type="text"
+              class="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+              :class="form.errors.schedulename ? 'border-red-400' : 'border-gray-300'" />
+            <p v-if="form.errors.schedulename" class="text-xs text-red-500 mt-1">{{ form.errors.schedulename }}</p>
+          </div>
+
+          <div class="overflow-x-auto">
+            <table class="w-full text-xs">
+              <thead>
+                <tr class="bg-gray-50 text-gray-500">
+                  <th class="px-2 py-2 text-left w-24">Day</th>
+                  <th class="px-2 py-2 text-left">Time In</th>
+                  <th class="px-2 py-2 text-left">Break Out</th>
+                  <th class="px-2 py-2 text-left">Break In</th>
+                  <th class="px-2 py-2 text-left">Time Out</th>
+                  <th class="px-2 py-2 text-center">Cross-day</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-gray-100">
+                <tr v-for="day in DAYS" :key="day.key" class="hover:bg-gray-50">
+                  <td class="px-2 py-2 font-medium text-gray-700">{{ day.label }}</td>
+                  <td class="px-2 py-1">
+                    <input v-model="form[`${day.key}_timein`]" type="time"
+                      class="w-full border border-gray-200 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400" />
+                  </td>
+                  <td class="px-2 py-1">
+                    <input v-model="form[`${day.key}_breakout`]" type="time"
+                      class="w-full border border-gray-200 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400" />
+                  </td>
+                  <td class="px-2 py-1">
+                    <input v-model="form[`${day.key}_breakin`]" type="time"
+                      class="w-full border border-gray-200 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400" />
+                  </td>
+                  <td class="px-2 py-1">
+                    <input v-model="form[`${day.key}_timeout`]" type="time"
+                      class="w-full border border-gray-200 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400" />
+                  </td>
+                  <td class="px-2 py-1 text-center">
+                    <input v-model="form[`${day.key}_crossday`]" type="checkbox"
+                      class="rounded border-gray-300 text-blue-600 focus:ring-blue-400" />
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </form>
+      </template>
+
+      <template #footer>
+        <PrimaryButton variant="ghost" @click="closeModal">Cancel</PrimaryButton>
+        <PrimaryButton type="submit" form="sched-form" :loading="form.processing">
+          {{ modalMode === 'add' ? 'Add Schedule' : 'Save Changes' }}
+        </PrimaryButton>
+      </template>
+    </Modal>
+  </AppLayout>
+</template>
