@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 class AttendanceRequest extends Model
 {
     protected $table = 'request';
+    public    $timestamps = false;
 
     protected $fillable = [
         'attID', 'BadgeNumber', 'AttDate',

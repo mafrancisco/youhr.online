@@ -10,10 +10,12 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 class Employee extends Model
 {
     protected $table = 'employees';
+    public    $timestamps = false;
 
     protected $fillable = [
         'badgeID', 'empName', 'email', 'empStatus', 'empDesig',
         'empHead', 'schedule', 'status1', 'date_deact', 'date_encoded',
+        'division_id', 'unit_id',
     ];
 
     public function scopeActive(Builder $query): Builder
@@ -39,5 +41,15 @@ class Employee extends Model
     public function leaveCredit(): HasOne
     {
         return $this->hasOne(LeaveCredit::class, 'badgeID', 'badgeID');
+    }
+
+    public function divisionRecord(): BelongsTo
+    {
+        return $this->belongsTo(Division::class, 'division_id')->withDefault();
+    }
+
+    public function unitRecord(): BelongsTo
+    {
+        return $this->belongsTo(Unit::class, 'unit_id')->withDefault();
     }
 }

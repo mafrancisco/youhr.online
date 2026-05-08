@@ -4,11 +4,15 @@ import { Link, router, usePage } from '@inertiajs/vue3'
 
 defineProps({ title: String })
 
-const page     = usePage()
-const auth     = computed(() => page.props.auth)
-const pending  = computed(() => page.props.pendingLeaves ?? 0)
-const pendingGP= computed(() => page.props.pendingGatePasses ?? 0)
-const sideOpen = ref(true)
+const page      = usePage()
+const auth      = computed(() => page.props.auth)
+const settings  = computed(() => page.props.settings ?? {})
+const pending   = computed(() => page.props.pendingLeaves ?? 0)
+const pendingGP = computed(() => page.props.pendingGatePasses ?? 0)
+const sideOpen  = ref(true)
+
+const systemName = computed(() => settings.value.system_name || 'DTR System')
+const logoUrl    = computed(() => settings.value.logo_url || '')
 
 const hrNav = computed(() => [
   { href: '/dashboard',         label: 'Dashboard',       icon: '⊞', badge: 0 },
@@ -21,6 +25,9 @@ const hrNav = computed(() => [
   { href: '/admin/gate-passes', label: 'Gate Passes',     icon: '🚪', badge: pendingGP.value },
   { href: '/credits',           label: 'Leave Credits',   icon: '💳', badge: 0 },
   { href: '/users',             label: 'Users',           icon: '👤', badge: 0 },
+  { href: '/admin/divisions',   label: 'Divisions',       icon: '🏢', badge: 0 },
+  { href: '/biometric/devices', label: 'Biometric Devices', icon: '🖐', badge: 0 },
+  { href: '/admin/settings',    label: 'Settings',        icon: '⚙️', badge: 0 },
 ])
 
 const empNav = [
@@ -47,9 +54,12 @@ function logout() {
   <div class="min-h-screen flex bg-gray-100">
     <!-- Sidebar -->
     <aside class="w-64 bg-blue-900 text-white flex flex-col shrink-0">
-      <div class="px-4 py-5 border-b border-blue-800">
-        <p class="text-lg font-bold leading-tight">IronOne DTR</p>
-        <p class="text-xs text-blue-300 mt-0.5">{{ auth?.isHR ? 'HR Officer' : 'Employee' }}</p>
+      <div class="px-4 py-5 border-b border-blue-800 flex items-center gap-3">
+        <img v-if="logoUrl" :src="logoUrl" class="h-8 w-8 rounded object-contain bg-white p-0.5" alt="logo" />
+        <div>
+          <p class="text-sm font-bold leading-tight">{{ systemName }}</p>
+          <p class="text-xs text-blue-300 mt-0.5">{{ auth?.isHR ? 'HR Officer' : 'Employee' }}</p>
+        </div>
       </div>
 
       <nav class="flex-1 px-3 py-4 space-y-1 overflow-y-auto">

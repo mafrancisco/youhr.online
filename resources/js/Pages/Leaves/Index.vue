@@ -129,9 +129,9 @@ const typeCode = (acronym) => selectedType.value?.acronym === acronym
     </div>
 
     <!-- File Leave Modal -->
-    <Modal :show="showModal" @close="showModal = false">
-      <div class="p-6 max-h-[90vh] overflow-y-auto">
-        <h3 class="text-base font-semibold text-gray-800 mb-4">File Leave Application</h3>
+    <Modal :show="showModal" @close="showModal = false" size="lg">
+      <template #header>File Leave Application</template>
+      <template #body>
         <form @submit.prevent="submitLeave" class="space-y-4">
 
           <!-- Leave Type -->
@@ -222,7 +222,7 @@ const typeCode = (acronym) => selectedType.value?.acronym === acronym
             </PrimaryButton>
           </div>
         </form>
-      </div>
+      </template>
     </Modal>
   </AppLayout>
 </template>

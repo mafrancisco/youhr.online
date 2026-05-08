@@ -7,8 +7,10 @@
     "license": "MIT",
     "require": {
         "php": "^8.2",
+        "coding-libs/zkteco-php": "^0.0.35",
         "inertiajs/inertia-laravel": "^3.0",
         "laravel/framework": "^11.31",
+        "laravel/sanctum": "^4.0",
         "laravel/tinker": "^2.9",
         "mpdf/mpdf": "^8.3"
     },

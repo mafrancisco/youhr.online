@@ -2,16 +2,24 @@
 import { ref } from 'vue'
 import { useForm } from '@inertiajs/vue3'
 import AppLayout from '@/Layouts/AppLayout.vue'
-import Modal from '@/Components/Modal.vue'
-import PrimaryButton from '@/Components/PrimaryButton.vue'
-import FlashMessage from '@/Components/FlashMessage.vue'
+import { Modal, PrimaryButton, FlashMessage, DataTable, FormInput, SelectInput, PageHeader } from '@/Components'
 
 defineProps({
   credits:   Array,
   employees: Array,
 })
 
-const addModal  = ref(false)
+const columns = [
+  { key: 'badgeID',      label: 'Badge ID',        cellClass: 'font-mono text-gray-600' },
+  { key: 'empName',      label: 'Name',            cellClass: 'font-medium text-gray-900' },
+  { key: 'vl',           label: 'Vacation Leave',  headerClass: 'text-right', cellClass: 'text-right text-gray-700' },
+  { key: 'sl',           label: 'Sick Leave',      headerClass: 'text-right', cellClass: 'text-right text-gray-700' },
+  { key: 'ot',           label: 'OT Credits',      headerClass: 'text-right', cellClass: 'text-right text-gray-700' },
+  { key: 'service',      label: 'Service Credits', headerClass: 'text-right', cellClass: 'text-right text-gray-700' },
+  { key: 'dateupdated',  label: 'Updated',         cellClass: 'text-gray-400 text-xs' },
+]
+
+const addModal   = ref(false)
 const editTarget = ref(null)
 
 const addForm = useForm({ badgeID: '' })
@@ -54,62 +62,24 @@ function submitEdit() {
   <AppLayout title="Leave Credits">
     <FlashMessage />
 
-    <div class="flex items-center justify-between mb-5">
-      <h2 class="text-base font-semibold text-gray-700">Leave Credits ({{ credits.length }})</h2>
+    <PageHeader title="Leave Credits" :subtitle="`(${credits.length})`">
       <PrimaryButton @click="addModal = true">+ Add Employee</PrimaryButton>
-    </div>
+    </PageHeader>
 
-    <div class="bg-white rounded-xl shadow overflow-hidden">
-      <table class="w-full text-sm">
-        <thead class="bg-gray-50 text-gray-500 text-xs uppercase tracking-wide">
-          <tr>
-            <th class="px-4 py-3 text-left">Badge ID</th>
-            <th class="px-4 py-3 text-left">Name</th>
-            <th class="px-4 py-3 text-right">Vacation Leave</th>
-            <th class="px-4 py-3 text-right">Sick Leave</th>
-            <th class="px-4 py-3 text-right">OT Credits</th>
-            <th class="px-4 py-3 text-right">Service Credits</th>
-            <th class="px-4 py-3 text-left">Updated</th>
-            <th class="px-4 py-3"></th>
-          </tr>
-        </thead>
-        <tbody class="divide-y divide-gray-100">
-          <tr v-for="c in credits" :key="c.id" class="hover:bg-gray-50">
-            <td class="px-4 py-3 font-mono text-gray-600">{{ c.badgeID }}</td>
-            <td class="px-4 py-3 font-medium text-gray-900">{{ c.empName }}</td>
-            <td class="px-4 py-3 text-right text-gray-700">{{ c.vl }}</td>
-            <td class="px-4 py-3 text-right text-gray-700">{{ c.sl }}</td>
-            <td class="px-4 py-3 text-right text-gray-700">{{ c.ot }}</td>
-            <td class="px-4 py-3 text-right text-gray-700">{{ c.service }}</td>
-            <td class="px-4 py-3 text-gray-400 text-xs">{{ c.dateupdated }}</td>
-            <td class="px-4 py-3 text-right">
-              <button @click="openEdit(c)" class="text-blue-600 hover:underline text-xs">Edit</button>
-            </td>
-          </tr>
-          <tr v-if="!credits.length">
-            <td colspan="8" class="px-4 py-8 text-center text-gray-400">No leave credit records yet.</td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
+    <DataTable :columns="columns" :rows="credits">
+      <template #actions="{ row }">
+        <button @click="openEdit(row)" class="text-blue-600 hover:underline text-xs">Edit</button>
+      </template>
+      <template #empty>No leave credit records yet.</template>
+    </DataTable>
 
     <!-- Add employee modal -->
     <Modal :show="addModal" size="sm" @close="addModal = false">
       <template #header>Add Leave Credit Record</template>
       <template #body>
         <form @submit.prevent="submitAdd" id="add-form" class="space-y-3">
-          <div>
-            <label class="block text-xs font-medium text-gray-700 mb-1">Employee</label>
-            <select v-model="addForm.badgeID"
-              class="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
-              :class="addForm.errors.badgeID ? 'border-red-400' : 'border-gray-300'">
-              <option value="">— select —</option>
-              <option v-for="e in employees" :key="e.badgeID" :value="e.badgeID">
-                {{ e.empName }}
-              </option>
-            </select>
-            <p v-if="addForm.errors.badgeID" class="text-xs text-red-500 mt-1">{{ addForm.errors.badgeID }}</p>
-          </div>
+          <SelectInput label="Employee" v-model="addForm.badgeID" :error="addForm.errors.badgeID"
+            :options="employees.map(e => ({ value: e.badgeID, label: e.empName }))" />
         </form>
       </template>
       <template #footer>
@@ -123,26 +93,10 @@ function submitEdit() {
       <template #header>Edit Credits — {{ editTarget?.empName }}</template>
       <template #body>
         <form @submit.prevent="submitEdit" id="edit-form" class="grid grid-cols-2 gap-3">
-          <div>
-            <label class="block text-xs font-medium text-gray-700 mb-1">Vacation Leave</label>
-            <input v-model="editForm.vl" type="number" min="0" step="0.001"
-              class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
-          </div>
-          <div>
-            <label class="block text-xs font-medium text-gray-700 mb-1">Sick Leave</label>
-            <input v-model="editForm.sl" type="number" min="0" step="0.001"
-              class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
-          </div>
-          <div>
-            <label class="block text-xs font-medium text-gray-700 mb-1">OT Credits</label>
-            <input v-model="editForm.ot" type="number" min="0" step="0.001"
-              class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
-          </div>
-          <div>
-            <label class="block text-xs font-medium text-gray-700 mb-1">Service Credits</label>
-            <input v-model="editForm.service" type="number" min="0" step="0.001"
-              class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
-          </div>
+          <FormInput label="Vacation Leave" v-model="editForm.vl" type="number" />
+          <FormInput label="Sick Leave" v-model="editForm.sl" type="number" />
+          <FormInput label="OT Credits" v-model="editForm.ot" type="number" />
+          <FormInput label="Service Credits" v-model="editForm.service" type="number" />
         </form>
       </template>
       <template #footer>

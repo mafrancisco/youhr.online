@@ -6,8 +6,9 @@ use Illuminate\Database\Eloquent\Model;
 
 class DateParameter extends Model
 {
-    protected $table    = 'dateparameters';
-    protected $fillable = ['type', 'description', 'actualDate', 'timein', 'breakout', 'breakin', 'timeout'];
+    protected $table      = 'dateparameters';
+    public    $timestamps = false;
+    protected $fillable   = ['type', 'description', 'actualDate', 'timein', 'breakout', 'breakin', 'timeout'];
 
     public function isHoliday(): bool
     {

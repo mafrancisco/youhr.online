@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 class LeaveType extends Model
 {
     protected $table    = 'leave_type';
+    public    $timestamps = false;
     protected $fillable = ['leave_type', 'description', 'acronym'];
 
     public function leaves(): HasMany

@@ -2,11 +2,17 @@
 
 namespace App\Services;
 
+use App\Models\Setting;
 use Illuminate\Support\Facades\DB;
 use Mpdf\Mpdf;
 
 class DTRPdfService
 {
+    private function settings(): Setting
+    {
+        return Setting::current();
+    }
+
     private function makeMpdf(): Mpdf
     {
         $mpdf = new Mpdf([
@@ -87,7 +93,7 @@ class DTRPdfService
     // -----------------------------------------------------------------------
     // Individual PDF (mirrors download1.php)
     // -----------------------------------------------------------------------
-    public function individual(string $badgeID, string $empName, object $head, string $attRange, string $startDate, string $endDate, ?object $sub): string
+    public function individual(string $badgeID, string $empName, ?object $head, string $attRange, string $startDate, string $endDate, ?object $sub): string
     {
         $mpdf = $this->makeMpdf();
         $html = $this->buildDTR($badgeID, $empName, $head, $attRange, '', $startDate, $endDate, $sub);
@@ -121,14 +127,23 @@ class DTRPdfService
 
     private function headerSection(string $empName, string $attRange): string
     {
-        $logoPath = public_path('img/headerlogo.png');
-        $logoHtml = file_exists($logoPath)
-            ? '<img src="' . $logoPath . '" height="25px">'
+        $s        = $this->settings();
+        $logoPath = $s->logoPublicPath();
+        $logoHtml = $logoPath && file_exists($logoPath)
+            ? '<img src="' . $logoPath . '" height="30px" style="vertical-align:middle;">'
+            : '';
+
+        $systemName = htmlspecialchars($s->system_name ?: 'Daily Time Record System');
+        $address    = htmlspecialchars($s->company_address ?: '');
+        $addrLine   = $address
+            ? '<tr><td align="center" style="font-size:7pt;">' . $address . '</td></tr>'
             : '';
 
         return '
         <table class="noborder">
             <tr><td align="center">' . $logoHtml . '</td></tr>
+            <tr><td align="center"><b>' . $systemName . '</b></td></tr>
+            ' . $addrLine . '
             <tr><td align="center"><b>Daily Time Record</b></td></tr>
             <tr><td align="center"><b>' . strtoupper($empName) . '</b></td></tr>
             <tr><td align="center" style="font-size:7pt;">For the period: ' . $attRange . '</td></tr>
@@ -284,8 +299,24 @@ class DTRPdfService
 
     private function footerSection(string $empName, ?object $head, ?object $sub): string
     {
-        $headName     = $head ? strtoupper($head->headname) : '';
-        $headPosition = $head ? $head->headposition : '';
+        $s        = $this->settings();
+        $headName = $head ? strtoupper($head->headname) : '';
+        $headPos  = $head ? $head->headposition : '';
+
+        // Fall back to configured authorized signatory if no dept head
+        if (!$headName && $s->authorized_signatory) {
+            $headName = strtoupper($s->authorized_signatory);
+            $headPos  = $s->authorized_signatory_position;
+        }
+
+        // Second signatory row — only show if different from dept head
+        $signatoryRow = '';
+        if ($s->authorized_signatory && strtoupper($s->authorized_signatory) !== $headName) {
+            $signatoryRow = '
+            <tr><td><br><hr></td></tr>
+            <tr><td align="center"><b>' . strtoupper($s->authorized_signatory) . '</b>
+                <br><font size="1">' . htmlspecialchars($s->authorized_signatory_position) . '</font></td></tr>';
+        }
 
         $subLine = $sub
             ? 'Date &amp; Time Submitted: ' . $sub->date_submitted . ' ' . $sub->time_submitted . '<br>'
@@ -299,7 +330,8 @@ class DTRPdfService
             <tr><td><font size="1">I CERTIFY on my honor that above is a true and correct report of the hours of work performed, record of which was made daily at the time of arrival and departure from office.</font><br><br></td></tr>
             <tr><td align="center"><b>' . strtoupper($empName) . '</b><br><font size="1">Employee</font></td></tr>
             <tr><td><br><hr></td></tr>
-            <tr><td align="center"><b>' . $headName . '</b><br><font size="1">' . $headPosition . '</font></td></tr>
+            <tr><td align="center"><b>' . $headName . '</b><br><font size="1">' . $headPos . '</font></td></tr>
+            ' . $signatoryRow . '
         </table>
         <br><font size="1">
         ' . $subLine . '

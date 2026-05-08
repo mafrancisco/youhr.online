@@ -1,5 +1,11 @@
 <script setup>
-import { useForm } from '@inertiajs/vue3'
+import { computed } from 'vue'
+import { useForm, usePage } from '@inertiajs/vue3'
+
+const page       = usePage()
+const settings   = computed(() => page.props.settings ?? {})
+const systemName = computed(() => settings.value.system_name || 'DTR System')
+const logoUrl    = computed(() => settings.value.logo_url || '')
 
 const form = useForm({ username: '', password: '' })
 
@@ -12,7 +18,8 @@ function submit() {
   <div class="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-900 to-blue-700 px-4">
     <div class="bg-white rounded-2xl shadow-xl w-full max-w-sm p-8">
       <div class="text-center mb-8">
-        <h1 class="text-2xl font-bold text-gray-900">IronOne DTR</h1>
+        <img v-if="logoUrl" :src="logoUrl" class="h-16 w-16 mx-auto mb-3 object-contain" alt="logo" />
+        <h1 class="text-2xl font-bold text-gray-900">{{ systemName }}</h1>
         <p class="text-sm text-gray-500 mt-1">Daily Time Record System</p>
       </div>
 

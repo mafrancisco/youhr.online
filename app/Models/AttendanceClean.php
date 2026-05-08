@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 class AttendanceClean extends Model
 {
     protected $table = 'attendance_clean';
+    public    $timestamps = false;
 
     protected $fillable = [
         'BadgeNumber', 'AttDate',

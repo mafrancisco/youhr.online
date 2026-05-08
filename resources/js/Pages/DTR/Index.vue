@@ -168,10 +168,8 @@ const isWeekend = (dayName) => ['Sat', 'Sun'].includes(dayName)
 
     <!-- Correction Request Modal -->
     <Modal :show="showRequestModal" @close="showRequestModal = false">
-      <div class="p-6">
-        <h3 class="text-base font-semibold text-gray-800 mb-4">
-          Request Correction — {{ requestDay?.attDate }}
-        </h3>
+      <template #header>Request Correction — {{ requestDay?.attDate }}</template>
+      <template #body>
         <form @submit.prevent="submitRequest" class="space-y-3">
           <div class="grid grid-cols-2 gap-3">
             <div>
@@ -210,7 +208,7 @@ const isWeekend = (dayName) => ['Sat', 'Sun'].includes(dayName)
             <PrimaryButton type="submit" :loading="requestForm.processing">Submit Request</PrimaryButton>
           </div>
         </form>
-      </div>
+      </template>
     </Modal>
   </AppLayout>
 </template>

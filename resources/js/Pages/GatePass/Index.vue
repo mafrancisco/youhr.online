@@ -135,10 +135,8 @@ function statusClass(status) {
 
     <!-- File / Edit Gate Pass Modal -->
     <Modal :show="showModal" @close="showModal = false">
-      <div class="p-6">
-        <h3 class="text-base font-semibold text-gray-800 mb-4">
-          {{ editPass ? 'Edit Gate Pass' : 'File Gate Pass' }}
-        </h3>
+      <template #header>{{ editPass ? 'Edit Gate Pass' : 'File Gate Pass' }}</template>
+      <template #body>
         <form @submit.prevent="submit" class="space-y-4">
           <div>
             <label class="block text-xs font-medium text-gray-700 mb-1">Type</label>
@@ -185,7 +183,7 @@ function statusClass(status) {
             <p v-for="(err, key) in form.errors" :key="key">{{ err }}</p>
           </div>
 
-          <div class="flex justify-end gap-2 pt-2">
+          <div class="flex justify-end gap-2 pt-4">
             <button type="button" @click="showModal = false"
               class="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50">Cancel</button>
             <PrimaryButton type="submit" :loading="form.processing">
@@ -193,7 +191,7 @@ function statusClass(status) {
             </PrimaryButton>
           </div>
         </form>
-      </div>
+      </template>
     </Modal>
   </AppLayout>
 </template>

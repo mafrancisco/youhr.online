@@ -36,7 +36,15 @@ class HolidayController extends Controller
             'timeout'     => ['nullable', 'date_format:H:i'],
         ]);
 
-        $param = DateParameter::create($request->only(['type','description','actualDate','timein','breakout','breakin','timeout']));
+        $param = DateParameter::create([
+            'type'        => $request->type,
+            'description' => $request->description,
+            'actualDate'  => $request->actualDate,
+            'timein'      => $request->timein   ?? '',
+            'breakout'    => $request->breakout  ?? '',
+            'breakin'     => $request->breakin   ?? '',
+            'timeout'     => $request->timeout   ?? '',
+        ]);
 
         if ($param->isAdjustedFlagCeremony() || $param->isOverrideOfficialTime()) {
             $this->flagService->recompute($param);
@@ -57,7 +65,15 @@ class HolidayController extends Controller
             'timeout'     => ['nullable', 'date_format:H:i'],
         ]);
 
-        $holiday->update($request->only(['type','description','actualDate','timein','breakout','breakin','timeout']));
+        $holiday->update([
+            'type'        => $request->type,
+            'description' => $request->description,
+            'actualDate'  => $request->actualDate,
+            'timein'      => $request->timein   ?? '',
+            'breakout'    => $request->breakout  ?? '',
+            'breakin'     => $request->breakin   ?? '',
+            'timeout'     => $request->timeout   ?? '',
+        ]);
 
         if ($holiday->isAdjustedFlagCeremony() || $holiday->isOverrideOfficialTime()) {
             $this->flagService->recompute($holiday->fresh());

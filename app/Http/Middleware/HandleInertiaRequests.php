@@ -4,6 +4,7 @@ namespace App\Http\Middleware;
 
 use App\Models\GatePass;
 use App\Models\Leave;
+use App\Models\Setting;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
 
@@ -37,10 +38,19 @@ class HandleInertiaRequests extends Middleware
                 : 0,
 
             'pendingGatePasses' => fn() => $request->user()?->isHR()
-                ? GatePass::whereNull('date_time_approved')->where('status', '!=', 'Cancelled')->count()
+                ? GatePass::where(fn($q) => $q->whereNull('date_time_approved')->orWhere('date_time_approved', ''))
+                    ->where('status', '!=', 'Cancelled')->count()
                 : 0,
 
             'appName' => config('app.name'),
+
+            'settings' => function () {
+                $s = Setting::current();
+                return [
+                    'system_name' => $s->system_name,
+                    'logo_url'    => $s->logoUrl(),
+                ];
+            },
         ]);
     }
 }

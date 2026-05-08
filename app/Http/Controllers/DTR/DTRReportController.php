@@ -18,8 +18,9 @@ class DTRReportController extends Controller
     public function bulk(Request $request): Response
     {
         return Inertia::render('DTR/Report', [
-            'month'     => $request->get('month', now()->format('Y-m')),
-            'employees' => Employee::active()->orderBy('empName')->get(['id', 'badgeID', 'empName']),
+            'start_date' => $request->get('start_date', now()->startOfMonth()->format('Y-m-d')),
+            'end_date'   => $request->get('end_date',   now()->endOfMonth()->format('Y-m-d')),
+            'employees'  => Employee::active()->orderBy('empName')->get(['id', 'badgeID', 'empName']),
         ]);
     }
 

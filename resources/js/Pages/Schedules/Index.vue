@@ -1,10 +1,8 @@
 <script setup>
-import { ref, reactive } from 'vue'
+import { ref } from 'vue'
 import { useForm, router } from '@inertiajs/vue3'
 import AppLayout from '@/Layouts/AppLayout.vue'
-import Modal from '@/Components/Modal.vue'
-import PrimaryButton from '@/Components/PrimaryButton.vue'
-import FlashMessage from '@/Components/FlashMessage.vue'
+import { Modal, PrimaryButton, FlashMessage, DataTable, FormInput, PageHeader, ConfirmDialog } from '@/Components'
 
 defineProps({ schedules: Array })
 
@@ -30,8 +28,14 @@ function blankSlots() {
   return slots
 }
 
+const columns = [
+  { key: 'schedulename', label: 'Name', cellClass: 'font-medium text-gray-900' },
+  { key: 'activeDays',   label: 'Active Days', cellClass: 'text-gray-500 text-xs' },
+]
+
 const modalMode   = ref(null)
 const editTarget  = ref(null)
+const confirmState = ref({ show: false, title: '', message: '', action: null })
 
 const form = useForm({ schedulename: '', ...blankSlots() })
 
@@ -74,12 +78,25 @@ function submit() {
 }
 
 function destroy(sched) {
-  if (!confirm(`Delete schedule "${sched.schedulename}"?`)) return
-  router.delete(`/schedules/${sched.id}`)
+  confirmState.value = {
+    show: true,
+    title: 'Delete Schedule',
+    message: `Are you sure you want to delete "${sched.schedulename}"?`,
+    action: () => router.delete(`/schedules/${sched.id}`),
+  }
+}
+
+function onConfirm() {
+  confirmState.value.action?.()
+  confirmState.value.show = false
 }
 
 function activeDays(sched) {
   return DAYS.filter(({ key }) => sched[`${key}_timein`]).map(d => d.label.slice(0, 3)).join(', ')
+}
+
+function tableRows(schedules) {
+  return schedules.map(s => ({ ...s, activeDays: activeDays(s) || '—' }))
 }
 </script>
 
@@ -87,35 +104,17 @@ function activeDays(sched) {
   <AppLayout title="Schedules">
     <FlashMessage />
 
-    <div class="flex items-center justify-between mb-5">
-      <h2 class="text-base font-semibold text-gray-700">Schedules ({{ schedules.length }})</h2>
+    <PageHeader title="Schedules" :subtitle="`(${schedules.length})`">
       <PrimaryButton @click="openAdd">+ Add Schedule</PrimaryButton>
-    </div>
+    </PageHeader>
 
-    <div class="bg-white rounded-xl shadow overflow-hidden">
-      <table class="w-full text-sm">
-        <thead class="bg-gray-50 text-gray-500 text-xs uppercase tracking-wide">
-          <tr>
-            <th class="px-4 py-3 text-left">Name</th>
-            <th class="px-4 py-3 text-left">Active Days</th>
-            <th class="px-4 py-3"></th>
-          </tr>
-        </thead>
-        <tbody class="divide-y divide-gray-100">
-          <tr v-for="sched in schedules" :key="sched.id" class="hover:bg-gray-50">
-            <td class="px-4 py-3 font-medium text-gray-900">{{ sched.schedulename }}</td>
-            <td class="px-4 py-3 text-gray-500 text-xs">{{ activeDays(sched) || '—' }}</td>
-            <td class="px-4 py-3 text-right whitespace-nowrap">
-              <button @click="openEdit(sched)" class="text-blue-600 hover:underline text-xs mr-3">Edit</button>
-              <button @click="destroy(sched)" class="text-red-500 hover:underline text-xs">Delete</button>
-            </td>
-          </tr>
-          <tr v-if="!schedules.length">
-            <td colspan="3" class="px-4 py-8 text-center text-gray-400">No schedules yet.</td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
+    <DataTable :columns="columns" :rows="tableRows(schedules)">
+      <template #actions="{ row }">
+        <button @click="openEdit(row)" class="text-blue-600 hover:underline text-xs mr-3">Edit</button>
+        <button @click="destroy(row)" class="text-red-500 hover:underline text-xs">Delete</button>
+      </template>
+      <template #empty>No schedules yet.</template>
+    </DataTable>
 
     <!-- Add / Edit modal -->
     <Modal :show="modalMode !== null" size="xl" @close="closeModal">
@@ -124,11 +123,7 @@ function activeDays(sched) {
       <template #body>
         <form @submit.prevent="submit" id="sched-form">
           <div class="mb-4">
-            <label class="block text-xs font-medium text-gray-700 mb-1">Schedule Name</label>
-            <input v-model="form.schedulename" type="text"
-              class="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
-              :class="form.errors.schedulename ? 'border-red-400' : 'border-gray-300'" />
-            <p v-if="form.errors.schedulename" class="text-xs text-red-500 mt-1">{{ form.errors.schedulename }}</p>
+            <FormInput label="Schedule Name" v-model="form.schedulename" :error="form.errors.schedulename" />
           </div>
 
           <div class="overflow-x-auto">
@@ -180,5 +175,8 @@ function activeDays(sched) {
         </PrimaryButton>
       </template>
     </Modal>
+
+    <ConfirmDialog :show="confirmState.show" :title="confirmState.title" :message="confirmState.message"
+      @confirm="onConfirm" @cancel="confirmState.show = false" />
   </AppLayout>
 </template>

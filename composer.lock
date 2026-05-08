@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "197923521d1472593cf54fb681b19747",
+    "content-hash": "cdc37b2ed4b3508aa249fea86b13b184",
     "packages": [
         {
             "name": "brick/math",
@@ -134,6 +134,66 @@
                 }
             ],
             "time": "2024-02-09T16:56:22+00:00"
+        },
+        {
+            "name": "coding-libs/zkteco-php",
+            "version": "v0.0.35",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/coding-libs/zkteco-php.git",
+                "reference": "52e177c5a6ec7ff0d35764ee750b7a885c4610a6"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/coding-libs/zkteco-php/zipball/52e177c5a6ec7ff0d35764ee750b7a885c4610a6",
+                "reference": "52e177c5a6ec7ff0d35764ee750b7a885c4610a6",
+                "shasum": ""
+            },
+            "require": {
+                "php": "^8.0"
+            },
+            "require-dev": {
+                "phpunit/phpunit": "^8.0|^9.3|^10.4"
+            },
+            "type": "library",
+            "extra": {
+                "laravel": {
+                    "providers": [
+                        "CodingLibs\\ZktecoPhp\\ZktecoPhpServiceProvider"
+                    ]
+                },
+                "branch-alias": {
+                    "dev-master": "1.x-dev"
+                }
+            },
+            "autoload": {
+                "psr-4": {
+                    "CodingLibs\\ZktecoPhp\\": "src/"
+                }
+            },
+            "notification-url": "https://packagist.org/downloads/",
+            "license": [
+                "MIT"
+            ],
+            "authors": [
+                {
+                    "name": "Coding Libs",
+                    "email": "codinglibs4u@gmail.com"
+                }
+            ],
+            "description": "A package for managing ZKTeco device.",
+            "homepage": "https://github.com/coding-libs",
+            "keywords": [
+                "Fingerprint",
+                "attendances",
+                "laravel",
+                "zkteco"
+            ],
+            "support": {
+                "issues": "https://github.com/coding-libs/zkteco-php/issues",
+                "source": "https://github.com/coding-libs/zkteco-php"
+            },
+            "time": "2026-05-05T05:09:40+00:00"
         },
         {
             "name": "dflydev/dot-access-data",
@@ -1399,6 +1459,69 @@
                 "source": "https://github.com/laravel/prompts/tree/v0.3.17"
             },
             "time": "2026-04-20T16:07:33+00:00"
+        },
+        {
+            "name": "laravel/sanctum",
+            "version": "v4.3.2",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/laravel/sanctum.git",
+                "reference": "2a9bccc18e9907808e0018dd15fa643937886b1e"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/laravel/sanctum/zipball/2a9bccc18e9907808e0018dd15fa643937886b1e",
+                "reference": "2a9bccc18e9907808e0018dd15fa643937886b1e",
+                "shasum": ""
+            },
+            "require": {
+                "ext-json": "*",
+                "illuminate/console": "^11.0|^12.0|^13.0",
+                "illuminate/contracts": "^11.0|^12.0|^13.0",
+                "illuminate/database": "^11.0|^12.0|^13.0",
+                "illuminate/support": "^11.0|^12.0|^13.0",
+                "php": "^8.2",
+                "symfony/console": "^7.0|^8.0"
+            },
+            "require-dev": {
+                "mockery/mockery": "^1.6",
+                "orchestra/testbench": "^9.15|^10.8|^11.0",
+                "phpstan/phpstan": "^1.10"
+            },
+            "type": "library",
+            "extra": {
+                "laravel": {
+                    "providers": [
+                        "Laravel\\Sanctum\\SanctumServiceProvider"
+                    ]
+                }
+            },
+            "autoload": {
+                "psr-4": {
+                    "Laravel\\Sanctum\\": "src/"
+                }
+            },
+            "notification-url": "https://packagist.org/downloads/",
+            "license": [
+                "MIT"
+            ],
+            "authors": [
+                {
+                    "name": "Taylor Otwell",
+                    "email": "taylor@laravel.com"
+                }
+            ],
+            "description": "Laravel Sanctum provides a featherweight authentication system for SPAs and simple APIs.",
+            "keywords": [
+                "auth",
+                "laravel",
+                "sanctum"
+            ],
+            "support": {
+                "issues": "https://github.com/laravel/sanctum/issues",
+                "source": "https://github.com/laravel/sanctum"
+            },
+            "time": "2026-04-30T11:46:25+00:00"
         },
         {
             "name": "laravel/serializable-closure",

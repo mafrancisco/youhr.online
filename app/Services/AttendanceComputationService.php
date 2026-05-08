@@ -18,8 +18,18 @@ class AttendanceComputationService
         'sun' => 'sun',
     ];
 
+    /** Pre-loaded schedules keyed by schedule ID */
+    private array $schedules = [];
+
+    /** Pre-loaded approved leave dates keyed by badgeID */
+    private array $leaveDates = [];
+
     public function compute(string $startDate, string $endDate): void
     {
+        // Pre-load all schedules and leaves to avoid N+1 queries
+        $this->preloadSchedules();
+        $this->preloadLeaves();
+
         // First pass: compute tardiness and initial undertime
         $this->firstPass($startDate, $endDate);
 
@@ -28,17 +38,50 @@ class AttendanceComputationService
     }
 
     // -----------------------------------------------------------------------
-    // First pass — mirrors convert.php main while loop
+    // Pre-loading — eliminates hundreds of per-row queries
+    // -----------------------------------------------------------------------
+
+    private function preloadSchedules(): void
+    {
+        $rows = DB::select("SELECT * FROM schedule");
+        foreach ($rows as $row) {
+            $this->schedules[$row->id] = $row;
+        }
+    }
+
+    private function preloadLeaves(): void
+    {
+        $leaves = DB::select("SELECT badgeID, date_start FROM leaves WHERE status = 'Approved'");
+        foreach ($leaves as $leave) {
+            $badge = $leave->badgeID;
+            if (!isset($this->leaveDates[$badge])) {
+                $this->leaveDates[$badge] = [];
+            }
+            $expanded = $this->expandLeaveDates($leave->date_start ?? '');
+            $this->leaveDates[$badge] = array_merge($this->leaveDates[$badge], $expanded);
+        }
+        // Deduplicate
+        foreach ($this->leaveDates as $badge => $dates) {
+            $this->leaveDates[$badge] = array_unique($dates);
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // First pass — compute tardiness and initial undertime
     // -----------------------------------------------------------------------
     private function firstPass(string $startDate, string $endDate): void
     {
         $rows = DB::select("
-            SELECT c.BadgeNumber, c.AttDate, c.StartTime1, c.StartTime2, c.StartTime3, c.StartTime4,
+            SELECT c.id, c.BadgeNumber, c.AttDate, c.StartTime1, c.StartTime2, c.StartTime3, c.StartTime4,
                    e.schedule, c.OTIn, c.OTOut
             FROM attendance_clean c
             JOIN employees e ON c.BadgeNumber = e.badgeID
             WHERE STR_TO_DATE(c.AttDate, '%m/%d/%Y') BETWEEN ? AND ?
         ", [$startDate, $endDate]);
+
+        // Batch updates to reduce individual UPDATE queries
+        $tardinessUpdates = [];
+        $leaveUpdates = [];
 
         foreach ($rows as $row) {
             $badge   = $row->BadgeNumber;
@@ -105,29 +148,18 @@ class AttendanceComputationService
                 }
             }
 
-            // --- Fetch schedule ---
-            $sched = DB::selectOne("
-                SELECT {$dayPrefix}_timein AS timein,
-                       {$dayPrefix}_timeout AS timeout,
-                       {$dayPrefix}_crossday AS crossday
-                FROM schedule WHERE id = ?
-            ", [$schedId]);
-
-            $schedIn  = $sched->timein  ?? '';
-            $schedOut = $sched->timeout ?? '';
-            $crossday = $sched->crossday ?? 0;
+            // --- Fetch schedule from pre-loaded cache ---
+            $sched = $this->getScheduleForDay($schedId, $dayPrefix);
+            $schedIn  = $sched['timein'];
+            $schedOut = $sched['timeout'];
+            $crossday = $sched['crossday'];
 
             $tardiness = 0;
             $undertime = 0;
 
-            // --- Leave check ---
+            // --- Leave check (from pre-loaded data) ---
             if ($this->isOnLeave($badge, $attDate)) {
-                DB::update("
-                    UPDATE attendance_clean
-                    SET StartTime1='L', StartTime2='L', StartTime3='L', StartTime4='L',
-                        tardiness=0, undertime=0
-                    WHERE BadgeNumber = ? AND AttDate = ?
-                ", [$badge, $attDate]);
+                $leaveUpdates[] = [$badge, $attDate];
                 continue;
             }
 
@@ -183,24 +215,43 @@ class AttendanceComputationService
                 }
             }
 
+            $tardinessUpdates[] = [$tardiness, $undertime, $badge, $attDate];
+        }
+
+        // Batch execute tardiness/undertime updates
+        foreach ($tardinessUpdates as $params) {
             DB::update("
                 UPDATE attendance_clean SET tardiness = ?, undertime = ?
                 WHERE BadgeNumber = ? AND AttDate = ?
-            ", [$tardiness, $undertime, $badge, $attDate]);
+            ", $params);
+        }
+
+        // Batch execute leave updates
+        foreach ($leaveUpdates as [$badge, $attDate]) {
+            DB::update("
+                UPDATE attendance_clean
+                SET StartTime1='L', StartTime2='L', StartTime3='L', StartTime4='L',
+                    tardiness=0, undertime=0
+                WHERE BadgeNumber = ? AND AttDate = ?
+            ", [$badge, $attDate]);
         }
     }
 
     // -----------------------------------------------------------------------
-    // Second pass — mirrors convert.php second while loop ($rcheck)
+    // Second pass — refine undertime and compute OT
     // -----------------------------------------------------------------------
     private function secondPass(string $startDate, string $endDate): void
     {
         $rows = DB::select("
-            SELECT id, StartTime1, StartTime2, StartTime3, StartTime4,
-                   BadgeNumber, AttDate, OTIn, OTOut
-            FROM attendance_clean
-            WHERE STR_TO_DATE(AttDate, '%m/%d/%Y') BETWEEN ? AND ?
+            SELECT c.id, c.StartTime1, c.StartTime2, c.StartTime3, c.StartTime4,
+                   c.BadgeNumber, c.AttDate, c.OTIn, c.OTOut, e.schedule
+            FROM attendance_clean c
+            JOIN employees e ON c.BadgeNumber = e.badgeID
+            WHERE STR_TO_DATE(c.AttDate, '%m/%d/%Y') BETWEEN ? AND ?
         ", [$startDate, $endDate]);
+
+        // Collect batch updates
+        $updates = [];
 
         foreach ($rows as $row) {
             $id      = $row->id;
@@ -210,6 +261,7 @@ class AttendanceComputationService
             $time4   = trim($row->StartTime4 ?? '');
             $OTIn    = trim($row->OTIn ?? '');
             $OTout   = trim($row->OTOut ?? '');
+            $schedId = $row->schedule;
 
             // Skip weekends
             [$m, $d, $y] = explode('/', $attDate);
@@ -217,7 +269,7 @@ class AttendanceComputationService
             $dayName = strtolower(date('D', strtotime($dateYmd)));
             if ($dayName === 'sat' || $dayName === 'sun') continue;
 
-            // Skip if on leave
+            // Skip if on leave (from pre-loaded data)
             if ($this->isOnLeave($badge, $attDate)) continue;
 
             $hasStartPair = $this->isValidTime($time1) && $this->isValidTime($time4);
@@ -225,25 +277,14 @@ class AttendanceComputationService
 
             if (!$hasStartPair && !$hasOTTimes) continue;
 
-            // Get schedule
-            $empSched = DB::selectOne("SELECT schedule FROM employees WHERE badgeID = ?", [$badge]);
-            $schedId  = $empSched->schedule ?? null;
-
+            $dayPrefix = $this->dayMap[$dayName];
             $undertime = 0;
             $overtime  = 0;
 
             if ($hasStartPair && $schedId) {
-                $dayPrefix = $this->dayMap[$dayName];
-
-                $sched = DB::selectOne("
-                    SELECT {$dayPrefix}_timein AS timein,
-                           {$dayPrefix}_timeout AS timeout,
-                           {$dayPrefix}_crossday AS crossday
-                    FROM schedule WHERE id = ?
-                ", [$schedId]);
-
-                $schedOut = $sched->timeout ?? '';
-                $crossday = $sched->crossday ?? 0;
+                $sched = $this->getScheduleForDay($schedId, $dayPrefix);
+                $schedOut = $sched['timeout'];
+                $crossday = $sched['crossday'];
 
                 $schedOutSec   = strtotime("$dateYmd $schedOut");
                 $actualOutSec  = strtotime("$dateYmd $time4");
@@ -280,13 +321,37 @@ class AttendanceComputationService
                 if ($overtime < 0) $overtime = 0;
             }
 
-            DB::update("UPDATE attendance_clean SET undertime = ?, OT = ? WHERE id = ?", [$undertime, $overtime, $id]);
+            $updates[] = [$undertime, $overtime, $id];
+        }
+
+        // Batch execute updates
+        foreach ($updates as $params) {
+            DB::update("UPDATE attendance_clean SET undertime = ?, OT = ? WHERE id = ?", $params);
         }
     }
 
     // -----------------------------------------------------------------------
     // Helpers
     // -----------------------------------------------------------------------
+
+    private function getScheduleForDay(mixed $schedId, string $dayPrefix): array
+    {
+        $sched = $this->schedules[$schedId] ?? null;
+        if (!$sched) {
+            return ['timein' => '', 'timeout' => '', 'crossday' => 0];
+        }
+
+        $timeinCol   = $dayPrefix . '_timein';
+        $timeoutCol  = $dayPrefix . '_timeout';
+        $crossdayCol = $dayPrefix . '_crossday';
+
+        return [
+            'timein'   => $sched->$timeinCol ?? '',
+            'timeout'  => $sched->$timeoutCol ?? '',
+            'crossday' => $sched->$crossdayCol ?? 0,
+        ];
+    }
+
     private function isValidTime(string $time): bool
     {
         return (bool) preg_match('/^(0?[0-9]|1[0-9]|2[0-3]):[0-5][0-9]$/', $time);
@@ -310,15 +375,6 @@ class AttendanceComputationService
 
     private function isOnLeave(string $badge, string $attDate): bool
     {
-        $leaves = DB::select(
-            "SELECT date_start FROM leaves WHERE badgeID = ? AND status = 'Approved'",
-            [$badge]
-        );
-        foreach ($leaves as $leave) {
-            if (in_array($attDate, $this->expandLeaveDates($leave->date_start ?? ''))) {
-                return true;
-            }
-        }
-        return false;
+        return in_array($attDate, $this->leaveDates[$badge] ?? []);
     }
 }

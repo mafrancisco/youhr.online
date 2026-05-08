@@ -1,49 +1,31 @@
 <script setup>
 import { ref, computed } from 'vue'
-import { router, useForm } from '@inertiajs/vue3'
 import AppLayout from '@/Layouts/AppLayout.vue'
 import PrimaryButton from '@/Components/PrimaryButton.vue'
 import FlashMessage from '@/Components/FlashMessage.vue'
 
 const props = defineProps({
-  month:     String,
-  employees: Array,
+  start_date: String,
+  end_date:   String,
+  employees:  Array,
 })
 
-const selectedMonth = ref(props.month)
+const startDate     = ref(props.start_date)
+const endDate       = ref(props.end_date)
 const selected      = ref([])
-const allChecked    = computed(() => props.employees.length > 0 && selected.value.length === props.employees.length)
+const bulkEmpStatus = ref('1')
 
-// Bulk download form
-const bulkForm = useForm({
-  start_date: '',
-  end_date:   '',
-  emp_status: '1',
-})
-
-// Derive start/end from the selected month picker
-const monthStart = computed(() => {
-  if (!selectedMonth.value) return ''
-  return selectedMonth.value + '-01'
-})
-const monthEnd = computed(() => {
-  if (!selectedMonth.value) return ''
-  const [y, m] = selectedMonth.value.split('-')
-  const last = new Date(y, m, 0).getDate()
-  return `${y}-${m}-${String(last).padStart(2, '0')}`
-})
+const allChecked = computed(() =>
+  props.employees.length > 0 && selected.value.length === props.employees.length
+)
 
 function toggleAll() {
   selected.value = allChecked.value ? [] : props.employees.map(e => e.badgeID)
 }
 
-function changeMonth() {
-  router.get('/reports/dtr', { month: selectedMonth.value }, { preserveState: true })
-}
-
 function downloadIndividual(badgeID) {
-  const url = `/dtr/download?badge=${badgeID}&start_date=${monthStart.value}&end_date=${monthEnd.value}`
-  window.open(url, '_blank')
+  if (!startDate.value || !endDate.value) return
+  window.open(`/dtr/download?badge=${badgeID}&start_date=${startDate.value}&end_date=${endDate.value}`, '_blank')
 }
 
 function downloadSelectedIndividual() {
@@ -51,9 +33,8 @@ function downloadSelectedIndividual() {
 }
 
 function downloadBulk() {
-  bulkForm.start_date = monthStart.value
-  bulkForm.end_date   = monthEnd.value
-  // Use a form submission to trigger file download
+  if (!startDate.value || !endDate.value) return
+
   const form = document.createElement('form')
   form.method = 'POST'
   form.action = '/reports/dtr/download'
@@ -61,9 +42,9 @@ function downloadBulk() {
 
   const fields = {
     _token:     document.querySelector('meta[name="csrf-token"]')?.content || '',
-    start_date: monthStart.value,
-    end_date:   monthEnd.value,
-    emp_status: bulkForm.emp_status,
+    start_date: startDate.value,
+    end_date:   endDate.value,
+    emp_status: bulkEmpStatus.value,
   }
 
   for (const [name, value] of Object.entries(fields)) {
@@ -84,18 +65,22 @@ function downloadBulk() {
   <AppLayout title="DTR Reports">
     <FlashMessage />
 
-    <!-- Controls -->
     <div class="flex flex-wrap items-end gap-4 mb-5">
       <div>
-        <label class="block text-xs font-medium text-gray-600 mb-1">Period (Month)</label>
-        <input v-model="selectedMonth" type="month"
-          class="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
-          @change="changeMonth" />
+        <label class="block text-xs font-medium text-gray-600 mb-1">Start Date</label>
+        <input v-model="startDate" type="date"
+          class="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
+      </div>
+
+      <div>
+        <label class="block text-xs font-medium text-gray-600 mb-1">End Date</label>
+        <input v-model="endDate" type="date" :min="startDate"
+          class="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
       </div>
 
       <div>
         <label class="block text-xs font-medium text-gray-600 mb-1">Employee Type</label>
-        <select v-model="bulkForm.emp_status"
+        <select v-model="bulkEmpStatus"
           class="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
           <option value="1">Regular</option>
           <option value="2">Contractual</option>
@@ -103,11 +88,11 @@ function downloadBulk() {
       </div>
 
       <div class="flex gap-2 ml-auto">
-        <button @click="downloadBulk" :disabled="!selectedMonth"
+        <button @click="downloadBulk" :disabled="!startDate || !endDate"
           class="px-4 py-2 bg-blue-700 text-white text-sm rounded-lg hover:bg-blue-800 disabled:opacity-50">
           Bulk PDF (all employees)
         </button>
-        <PrimaryButton :disabled="!selected.length" @click="downloadSelectedIndividual">
+        <PrimaryButton :disabled="!selected.length || !startDate || !endDate" @click="downloadSelectedIndividual">
           Individual PDFs ({{ selected.length }})
         </PrimaryButton>
       </div>
@@ -135,8 +120,8 @@ function downloadBulk() {
             <td class="px-4 py-3 font-mono text-gray-600">{{ emp.badgeID }}</td>
             <td class="px-4 py-3 font-medium text-gray-900">{{ emp.empName }}</td>
             <td class="px-4 py-3 text-right">
-              <button @click="downloadIndividual(emp.badgeID)"
-                class="text-blue-600 hover:underline text-xs">
+              <button @click="downloadIndividual(emp.badgeID)" :disabled="!startDate || !endDate"
+                class="text-blue-600 hover:underline text-xs disabled:opacity-40 disabled:cursor-not-allowed">
                 Download PDF
               </button>
             </td>

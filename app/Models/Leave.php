@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class Leave extends Model
 {
     protected $table = 'leaves';
+    public    $timestamps = false;
 
     protected $fillable = [
         'controlno', 'badgeID', 'leave_type', 'date_start', 'date_end',
@@ -15,9 +16,7 @@ class Leave extends Model
         'credits_vl', 'credits_sl', 'ot_credits', 'service_credits', 'dateUpdated',
     ];
 
-    protected $casts = [
-        'date_filed' => 'datetime',
-    ];
+    protected $casts = [];
 
     public function type(): BelongsTo
     {

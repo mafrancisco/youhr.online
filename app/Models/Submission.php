@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 class Submission extends Model
 {
     protected $table = 'submissions';
+    public    $timestamps = false;
 
     protected $fillable = ['badgeID', 'attRange', 'date_submitted', 'time_submitted'];
 
