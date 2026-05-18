@@ -70,7 +70,8 @@ function destroy(param) {
 
 const typeColors = {
   'Regular Holiday':                  'bg-red-100 text-red-700',
-  'Special Non-Working Holiday':      'bg-orange-100 text-orange-700',
+  'Special Non-Working Day':          'bg-orange-100 text-orange-700',
+  'Special Working Holiday':          'bg-yellow-100 text-yellow-700',
   'Adjusted Flag Ceremony Schedule':  'bg-purple-100 text-purple-700',
   'Override Official Time':           'bg-blue-100 text-blue-700',
 }

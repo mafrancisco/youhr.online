@@ -170,6 +170,15 @@ return new class extends Migration
                 $table->string('description', 50);
             });
         }
+
+        if (!Schema::hasTable('dateparameters')) {
+            Schema::create('dateparameters', function (Blueprint $table) {
+                $table->id();
+                $table->string('actualDate', 20)->index();
+                $table->string('type', 100)->default('');
+                $table->string('description', 255)->default('');
+            });
+        }
     }
 
     public function down(): void

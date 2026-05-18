@@ -9,7 +9,6 @@ const props = defineProps({
   inactive:  Array,
   statuses:  Array,
   schedules: Array,
-  heads:     Array,
   divisions: Array,
   units:     Array,
 })
@@ -56,7 +55,6 @@ const activeColumns = [
   { key: 'statusLabel',   label: 'Status' },
   { key: 'empDesig',      label: 'Designation', cellClass: 'text-gray-600' },
   { key: 'scheduleName',  label: 'Schedule',    cellClass: 'text-gray-600' },
-  { key: 'empHead',       label: 'Head',        cellClass: 'text-gray-600' },
   { key: 'division_name', label: 'Division',    cellClass: 'text-gray-500 text-xs' },
   { key: 'unit_name',     label: 'Unit',        cellClass: 'text-gray-500 text-xs' },
 ]
@@ -73,7 +71,6 @@ const form = useForm({
   email:       '',
   empStatus:   '',
   empDesig:    '',
-  empHead:     '',
   schedule:    '',
   division_id: '',
   unit_id:     '',
@@ -99,7 +96,6 @@ function openEdit(emp) {
   form.email       = emp.email
   form.empStatus   = emp.empStatus
   form.empDesig    = emp.empDesig
-  form.empHead     = emp.empHead
   form.schedule    = emp.schedule
   form.division_id = emp.division_id ?? ''
   form.unit_id     = emp.unit_id     ?? ''
@@ -211,11 +207,6 @@ function onConfirm() {
 
           <SelectInput label="Schedule" v-model="form.schedule" :error="form.errors.schedule"
             :options="schedules.map(s => ({ value: s.id, label: s.schedulename }))" />
-
-          <div class="col-span-2">
-            <SelectInput label="Head / Department" v-model="form.empHead" :error="form.errors.empHead"
-              :options="heads.map(h => ({ value: h.headname, label: `${h.headname} — ${h.headposition}` }))" />
-          </div>
 
           <SelectInput label="Division" v-model="form.division_id" placeholder="— none —"
             :options="divisions.map(d => ({ value: d.id, label: d.division_name }))" />

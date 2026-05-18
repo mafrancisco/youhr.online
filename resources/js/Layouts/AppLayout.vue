@@ -20,13 +20,15 @@ const hrNav = computed(() => [
   { href: '/schedules',         label: 'Schedules',       icon: '📅', badge: 0 },
   { href: '/attendance/upload', label: 'Import DTR',      icon: '📤', badge: 0 },
   { href: '/reports/dtr',       label: 'DTR Reports',     icon: '📄', badge: 0 },
-  { href: '/holidays',          label: 'Date Parameters', icon: '🗓', badge: 0 },
+  { href: '/holidays',          label: 'Holidays',        icon: '🗓', badge: 0 },
   { href: '/admin/leaves',      label: 'Pending Leaves',  icon: '📋', badge: pending.value },
   { href: '/admin/gate-passes', label: 'Gate Passes',     icon: '🚪', badge: pendingGP.value },
   { href: '/credits',           label: 'Leave Credits',   icon: '💳', badge: 0 },
   { href: '/users',             label: 'Users',           icon: '👤', badge: 0 },
-  { href: '/admin/divisions',   label: 'Divisions',       icon: '🏢', badge: 0 },
-  { href: '/biometric/devices', label: 'Biometric Devices', icon: '🖐', badge: 0 },
+  { href: '/admin/divisions',           label: 'Divisions',          icon: '🏢', badge: 0 },
+  { href: '/admin/employee-statuses',  label: 'Employee Statuses',  icon: '📊', badge: 0 },
+  { href: '/admin/leave-types',       label: 'Leave Types',        icon: '📑', badge: 0 },
+  { href: '/biometric/devices',        label: 'Biometric Devices',  icon: '🖐', badge: 0 },
   { href: '/admin/settings',    label: 'Settings',        icon: '⚙️', badge: 0 },
 ])
 

@@ -35,6 +35,7 @@ const columns = [
 
 const modalMode   = ref(null)
 const editTarget  = ref(null)
+const viewTarget  = ref(null)
 const confirmState = ref({ show: false, title: '', message: '', action: null })
 
 const form = useForm({ schedulename: '', ...blankSlots() })
@@ -110,6 +111,7 @@ function tableRows(schedules) {
 
     <DataTable :columns="columns" :rows="tableRows(schedules)">
       <template #actions="{ row }">
+        <button @click="viewTarget = row" class="text-green-600 hover:underline text-xs mr-3">View</button>
         <button @click="openEdit(row)" class="text-blue-600 hover:underline text-xs mr-3">Edit</button>
         <button @click="destroy(row)" class="text-red-500 hover:underline text-xs">Delete</button>
       </template>
@@ -173,6 +175,44 @@ function tableRows(schedules) {
         <PrimaryButton type="submit" form="sched-form" :loading="form.processing">
           {{ modalMode === 'add' ? 'Add Schedule' : 'Save Changes' }}
         </PrimaryButton>
+      </template>
+    </Modal>
+
+    <!-- View Schedule Detail Modal -->
+    <Modal :show="!!viewTarget" size="lg" @close="viewTarget = null">
+      <template #header>{{ viewTarget?.schedulename }}</template>
+      <template #body>
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="bg-gray-50 text-gray-500 text-xs uppercase">
+                <th class="px-3 py-2 text-left">Day</th>
+                <th class="px-3 py-2 text-left">Time In</th>
+                <th class="px-3 py-2 text-left">Break Out</th>
+                <th class="px-3 py-2 text-left">Break In</th>
+                <th class="px-3 py-2 text-left">Time Out</th>
+                <th class="px-3 py-2 text-center">Cross-day</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-100">
+              <tr v-for="day in DAYS" :key="day.key" class="hover:bg-gray-50">
+                <td class="px-3 py-2 font-medium text-gray-700">{{ day.label }}</td>
+                <td class="px-3 py-2 font-mono text-gray-600">{{ viewTarget?.[`${day.key}_timein`] || '—' }}</td>
+                <td class="px-3 py-2 font-mono text-gray-600">{{ viewTarget?.[`${day.key}_breakout`] || '—' }}</td>
+                <td class="px-3 py-2 font-mono text-gray-600">{{ viewTarget?.[`${day.key}_breakin`] || '—' }}</td>
+                <td class="px-3 py-2 font-mono text-gray-600">{{ viewTarget?.[`${day.key}_timeout`] || '—' }}</td>
+                <td class="px-3 py-2 text-center">
+                  <span v-if="viewTarget?.[`${day.key}_crossday`]" class="text-green-600 font-medium">✓</span>
+                  <span v-else class="text-gray-300">—</span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </template>
+      <template #footer>
+        <PrimaryButton variant="ghost" @click="viewTarget = null">Close</PrimaryButton>
+        <PrimaryButton @click="openEdit(viewTarget); viewTarget = null">Edit Schedule</PrimaryButton>
       </template>
     </Modal>
 

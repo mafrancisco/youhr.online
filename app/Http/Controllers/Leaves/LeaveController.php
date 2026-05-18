@@ -139,7 +139,55 @@ class LeaveController extends Controller
             'dateUpdated'     => now()->toDateString(),
         ]);
 
+        // When approved, mark attendance_clean records with 'L' for leave dates
+        if ($request->status === 'Approved') {
+            $this->markLeaveInAttendance($leave);
+        }
+
         return back()->with('success', 'Leave updated.');
+    }
+
+    /**
+     * Mark attendance_clean records with 'L' for approved leave dates.
+     */
+    private function markLeaveInAttendance(Leave $leave): void
+    {
+        $dates = $this->expandLeaveDates($leave->date_start ?? '');
+
+        foreach ($dates as $attDate) {
+            \Illuminate\Support\Facades\DB::update("
+                UPDATE attendance_clean
+                SET StartTime1 = 'L', StartTime2 = 'L', StartTime3 = 'L', StartTime4 = 'L',
+                    tardiness = 0, undertime = 0
+                WHERE BadgeNumber = ? AND AttDate = ?
+            ", [$leave->badgeID, $attDate]);
+        }
+    }
+
+    /**
+     * Expand leave date_start string into individual date entries (MM/DD/YYYY format).
+     */
+    private function expandLeaveDates(string $leaveString): array
+    {
+        $dates = [];
+        foreach (explode(',', $leaveString) as $p) {
+            $p = trim($p);
+            // Range format: MM/DD-DD/YYYY
+            if (preg_match('/^(\d{2})\/(\d{2})-(\d{2})\/(\d{4})$/', $p, $m)) {
+                for ($d = (int) $m[2]; $d <= (int) $m[3]; $d++) {
+                    $dates[] = sprintf('%02d/%02d/%04d', $m[1], $d, $m[4]);
+                }
+            }
+            // Single date: MM/DD/YYYY
+            elseif (preg_match('/^(\d{2})\/(\d{2})\/(\d{4})$/', $p)) {
+                $dates[] = $p;
+            }
+            // Y-m-d format (from new leave filing)
+            elseif (preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $p, $m)) {
+                $dates[] = sprintf('%02d/%02d/%04d', $m[2], $m[3], $m[1]);
+            }
+        }
+        return $dates;
     }
 
     public function downloadForm(Leave $leave)

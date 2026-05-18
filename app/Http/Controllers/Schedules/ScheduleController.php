@@ -45,10 +45,10 @@ class ScheduleController extends Controller
     {
         $data = ['schedulename' => $request->schedulename];
         foreach ($this->days as $d) {
-            $data["{$d}_timein"]   = $request->input("{$d}_timein") ?: null;
-            $data["{$d}_breakout"] = $request->input("{$d}_breakout") ?: null;
-            $data["{$d}_breakin"]  = $request->input("{$d}_breakin") ?: null;
-            $data["{$d}_timeout"]  = $request->input("{$d}_timeout") ?: null;
+            $data["{$d}_timein"]   = $request->input("{$d}_timein") ?? '';
+            $data["{$d}_breakout"] = $request->input("{$d}_breakout") ?? '';
+            $data["{$d}_breakin"]  = $request->input("{$d}_breakin") ?? '';
+            $data["{$d}_timeout"]  = $request->input("{$d}_timeout") ?? '';
             $data["{$d}_crossday"] = $request->boolean("{$d}_crossday");
         }
         return $data;

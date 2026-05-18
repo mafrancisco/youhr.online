@@ -15,6 +15,8 @@ use App\Http\Controllers\Leaves\LeaveController;
 use App\Http\Controllers\Schedules\ScheduleController;
 use App\Http\Controllers\Attendance\AttendanceImportController;
 use App\Http\Controllers\Admin\DivisionController;
+use App\Http\Controllers\Admin\EmployeeStatusController;
+use App\Http\Controllers\Admin\LeaveTypeController;
 use App\Http\Controllers\Admin\SettingController;
 use App\Http\Controllers\Biometric\BiometricDeviceController;
 use App\Http\Controllers\Users\UserController;
@@ -49,13 +51,12 @@ Route::middleware('auth')->group(function () {
         Route::get('/attendance/upload',            [AttendanceImportController::class, 'index'])->name('attendance.upload');
         Route::post('/attendance/import',           [AttendanceImportController::class, 'import'])->name('attendance.import');
         Route::post('/attendance/compute',          [AttendanceImportController::class, 'compute'])->name('attendance.compute');
-        Route::get('/attendance/computation-status', [AttendanceImportController::class, 'computationStatus'])->name('attendance.computation-status');
 
         Route::get('/employees/{emp}/dtr',          [AttendanceLogController::class, 'show'])->name('attendance.log');
         Route::put('/attendance/{clean}/time',      [AttendanceLogController::class, 'updateTime'])->name('attendance.updateTime');
 
         Route::get('/reports/dtr',                  [DTRReportController::class, 'bulk'])->name('reports.dtr');
-        Route::post('/reports/dtr/download',        [DTRReportController::class, 'bulkDownload'])->name('reports.dtr.download');
+        Route::get('/reports/dtr/download',         [DTRReportController::class, 'bulkDownload'])->name('reports.dtr.download');
 
         Route::get('/holidays',                     [HolidayController::class, 'index'])->name('holidays.index');
         Route::post('/holidays',                    [HolidayController::class, 'store'])->name('holidays.store');
@@ -88,6 +89,16 @@ Route::middleware('auth')->group(function () {
         Route::get('/admin/settings',               [SettingController::class, 'index'])->name('admin.settings');
         Route::post('/admin/settings',              [SettingController::class, 'update'])->name('admin.settings.update');
         Route::delete('/admin/settings/logo',       [SettingController::class, 'deleteLogo'])->name('admin.settings.logo.delete');
+
+        Route::get('/admin/employee-statuses',              [EmployeeStatusController::class, 'index'])->name('employee-statuses.index');
+        Route::post('/admin/employee-statuses',             [EmployeeStatusController::class, 'store'])->name('employee-statuses.store');
+        Route::put('/admin/employee-statuses/{status}',     [EmployeeStatusController::class, 'update'])->name('employee-statuses.update');
+        Route::delete('/admin/employee-statuses/{status}',  [EmployeeStatusController::class, 'destroy'])->name('employee-statuses.destroy');
+
+        Route::get('/admin/leave-types',                    [LeaveTypeController::class, 'index'])->name('leave-types.index');
+        Route::post('/admin/leave-types',                   [LeaveTypeController::class, 'store'])->name('leave-types.store');
+        Route::put('/admin/leave-types/{leaveType}',        [LeaveTypeController::class, 'update'])->name('leave-types.update');
+        Route::delete('/admin/leave-types/{leaveType}',     [LeaveTypeController::class, 'destroy'])->name('leave-types.destroy');
 
         // Biometric Device Management
         Route::get('/biometric/devices',                        [BiometricDeviceController::class, 'index'])->name('biometric.devices');

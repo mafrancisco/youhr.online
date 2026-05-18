@@ -34,30 +34,7 @@ function downloadSelectedIndividual() {
 
 function downloadBulk() {
   if (!startDate.value || !endDate.value) return
-
-  const form = document.createElement('form')
-  form.method = 'POST'
-  form.action = '/reports/dtr/download'
-  form.target = '_blank'
-
-  const fields = {
-    _token:     document.querySelector('meta[name="csrf-token"]')?.content || '',
-    start_date: startDate.value,
-    end_date:   endDate.value,
-    emp_status: bulkEmpStatus.value,
-  }
-
-  for (const [name, value] of Object.entries(fields)) {
-    const input = document.createElement('input')
-    input.type  = 'hidden'
-    input.name  = name
-    input.value = value
-    form.appendChild(input)
-  }
-
-  document.body.appendChild(form)
-  form.submit()
-  document.body.removeChild(form)
+  window.open(`/reports/dtr/download?start_date=${startDate.value}&end_date=${endDate.value}&emp_status=${bulkEmpStatus.value}`, '_blank')
 }
 </script>
 

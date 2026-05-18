@@ -178,6 +178,41 @@ class DTRPdfService
             ORDER BY STR_TO_DATE(AttDate, '%m/%d/%Y') ASC
         ", [$badgeID, $startDate, $endDate]);
 
+        // Pre-load approved leave dates for this employee
+        $leaveDates = [];
+        $leaveRows = DB::select(
+            "SELECT date_start FROM leaves WHERE badgeID = ? AND status = 'Approved'",
+            [$badgeID]
+        );
+        foreach ($leaveRows as $lr) {
+            foreach ($this->expandLeaveDates($lr->date_start ?? '') as $ld) {
+                $leaveDates[] = $ld;
+            }
+        }
+        $leaveDates = array_unique($leaveDates);
+
+        // Pre-load approved gate passes for this employee in range
+        $gatePassesByDate = [];
+        $gpRows = DB::select("
+            SELECT gatepass_type, gatepass_date, gatepass_timeout, gatepass_timein,
+                   actual_timeout, actual_timein
+            FROM gatepass
+            WHERE badgeID = ?
+              AND date_time_approved != ''
+              AND date_time_approved IS NOT NULL
+              AND gatepass_date BETWEEN ? AND ?
+        ", [$badgeID, $startDate, $endDate]);
+        foreach ($gpRows as $gp) {
+            // Convert gatepass_date (Y-m-d) to MM/DD/YYYY to match AttDate format
+            $dateParts = explode('-', $gp->gatepass_date);
+            if (count($dateParts) === 3) {
+                $attDateKey = $dateParts[1] . '/' . $dateParts[2] . '/' . $dateParts[0];
+            } else {
+                $attDateKey = $gp->gatepass_date;
+            }
+            $gatePassesByDate[$attDateKey][] = $gp;
+        }
+
         $html    = '';
         $totlate = 0;
         $totOT   = 0;
@@ -218,6 +253,18 @@ class DTRPdfService
                 continue;
             }
 
+            // Check if employee is on approved leave for this date
+            $isOnLeave = in_array($row->AttDate, $leaveDates) || $row->StartTime1 === 'L';
+            if ($isOnLeave && $row->StartTime1 !== 'L') {
+                // Force leave markers if not already set
+                $row->StartTime1 = 'L';
+                $row->StartTime2 = 'L';
+                $row->StartTime3 = 'L';
+                $row->StartTime4 = 'L';
+                $row->Tardiness  = 0;
+                $row->undertime  = 0;
+            }
+
             $specialLabels = ['A', 'L', 'T', 'OB', 'AWA'];
             $times = [$row->StartTime1, $row->StartTime2, $row->StartTime3, $row->StartTime4];
             foreach ($times as $i => $t) {
@@ -249,6 +296,25 @@ class DTRPdfService
             $hr      = (int) floor($late / 60);
             $min     = $late % 60;
             $remarks = $row->remarks ?? '';
+
+            // Append gate pass info to remarks
+            $dayGatePasses = $gatePassesByDate[$row->AttDate] ?? [];
+            if (!empty($dayGatePasses)) {
+                $gpLabels = [];
+                foreach ($dayGatePasses as $gp) {
+                    $gpTime = trim($gp->actual_timeout ?: $gp->gatepass_timeout ?? '');
+                    $gpIn   = trim($gp->actual_timein ?: $gp->gatepass_timein ?? '');
+                    $typeAbbr = match ($gp->gatepass_type) {
+                        'Official Business' => 'OB',
+                        'Official Time'     => 'OT-GP',
+                        'Personal'          => 'P-GP',
+                        default             => 'GP',
+                    };
+                    $gpLabels[] = $typeAbbr . ($gpTime && $gpIn ? " {$gpTime}-{$gpIn}" : '');
+                }
+                $gpStr = implode('; ', $gpLabels);
+                $remarks = $remarks ? "{$remarks} | {$gpStr}" : $gpStr;
+            }
 
             if ((int) $row->OT > 0) {
                 $indiOThr  = (int) floor($row->OT / 60);
@@ -337,5 +403,23 @@ class DTRPdfService
         ' . $subLine . '
         Date &amp; Time Printed: ' . date('m/d/Y H:i:s') . '
         </font>';
+    }
+
+    private function expandLeaveDates(string $leaveString): array
+    {
+        $dates = [];
+        foreach (explode(',', $leaveString) as $p) {
+            $p = trim($p);
+            if (preg_match('/^(\d{2})\/(\d{2})-(\d{2})\/(\d{4})$/', $p, $m)) {
+                for ($d = (int) $m[2]; $d <= (int) $m[3]; $d++) {
+                    $dates[] = sprintf('%02d/%02d/%04d', $m[1], $d, $m[4]);
+                }
+            } elseif (preg_match('/^(\d{2})\/(\d{2})\/(\d{4})$/', $p)) {
+                $dates[] = $p;
+            } elseif (preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $p, $m)) {
+                $dates[] = sprintf('%02d/%02d/%04d', $m[2], $m[3], $m[1]);
+            }
+        }
+        return $dates;
     }
 }

@@ -3,11 +3,9 @@
 namespace App\Http\Controllers\Attendance;
 
 use App\Http\Controllers\Controller;
-use App\Jobs\ComputeDTRJob;
 use App\Services\AttendanceComputationService;
 use App\Services\AttendanceImportService;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Cache;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -20,32 +18,40 @@ class AttendanceImportController extends Controller
 
     public function index(): Response
     {
-        return Inertia::render('Attendance/Upload', [
-            'computationStatus' => Cache::get('dtr_computation_status', 'idle'),
-        ]);
+        return Inertia::render('Attendance/Upload');
     }
 
     public function import(Request $request)
     {
         $request->validate([
-            'file'       => ['required', 'file'],
+            'files'      => ['required', 'array', 'min:1'],
+            'files.*'    => ['required', 'file'],
             'start_date' => ['required', 'date_format:Y-m-d'],
             'end_date'   => ['required', 'date_format:Y-m-d', 'after_or_equal:start_date'],
             'emp_status' => ['required', 'integer', 'in:1,2'],
         ]);
 
+        // Collect all file paths
+        $filePaths = array_map(
+            fn($file) => $file->path(),
+            $request->file('files')
+        );
+
+        // Run import across all files in one pass
         $count = $this->importer->import(
-            $request->file('file')->path(),
+            $filePaths,
             $request->start_date,
             $request->end_date,
             (int) $request->emp_status,
         );
 
-        // Dispatch computation to background queue for faster response
-        Cache::put('dtr_computation_status', 'queued', now()->addMinutes(10));
-        ComputeDTRJob::dispatch($request->start_date, $request->end_date);
+        // Run computation immediately
+        $this->computer->compute($request->start_date, $request->end_date);
 
-        return back()->with('success', "{$count} records imported. DTR computation is processing in the background.");
+        $fileCount = count($filePaths);
+        $fileLabel = $fileCount > 1 ? "{$fileCount} files" : '1 file';
+
+        return back()->with('success', "{$count} records imported from {$fileLabel} and DTR computed.");
     }
 
     public function compute(Request $request)
@@ -55,16 +61,8 @@ class AttendanceImportController extends Controller
             'end_date'   => ['required', 'date_format:Y-m-d', 'after_or_equal:start_date'],
         ]);
 
-        Cache::put('dtr_computation_status', 'queued', now()->addMinutes(10));
-        ComputeDTRJob::dispatch($request->start_date, $request->end_date);
+        $this->computer->compute($request->start_date, $request->end_date);
 
-        return back()->with('success', 'DTR computation queued. Processing in the background.');
-    }
-
-    public function computationStatus()
-    {
-        return response()->json([
-            'status' => Cache::get('dtr_computation_status', 'idle'),
-        ]);
+        return back()->with('success', 'DTR computation finished.');
     }
 }

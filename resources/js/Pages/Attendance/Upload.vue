@@ -1,66 +1,35 @@
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref } from 'vue'
 import { useForm } from '@inertiajs/vue3'
 import AppLayout from '@/Layouts/AppLayout.vue'
 import PrimaryButton from '@/Components/PrimaryButton.vue'
 import FlashMessage from '@/Components/FlashMessage.vue'
 
-const props = defineProps({
-  computationStatus: { type: String, default: 'idle' },
-})
-
 const importForm = useForm({
-  file:       null,
+  files:      [],
   start_date: '',
   end_date:   '',
   emp_status: '1',
 })
-const fileName = ref('')
+const fileNames = ref([])
 
 const computeForm = useForm({
   start_date: '',
   end_date:   '',
 })
 
-const status = ref(props.computationStatus)
-let pollInterval = null
-
-function startPolling() {
-  if (pollInterval) return
-  pollInterval = setInterval(async () => {
-    try {
-      const res = await fetch('/attendance/computation-status')
-      const data = await res.json()
-      status.value = data.status
-      if (data.status === 'completed' || data.status === 'failed' || data.status === 'idle') {
-        stopPolling()
-      }
-    } catch {
-      // ignore fetch errors
-    }
-  }, 3000)
-}
-
-function stopPolling() {
-  if (pollInterval) {
-    clearInterval(pollInterval)
-    pollInterval = null
-  }
-}
-
-onMounted(() => {
-  if (status.value === 'queued' || status.value === 'processing') {
-    startPolling()
-  }
-})
-
-onUnmounted(() => stopPolling())
-
 function onFileChange(e) {
-  const f = e.target.files[0]
-  if (!f) return
-  importForm.file = f
-  fileName.value  = f.name
+  const selected = Array.from(e.target.files)
+  if (!selected.length) return
+  importForm.files = selected
+  fileNames.value = selected.map(f => f.name)
+}
+
+function removeFile(index) {
+  const updated = [...importForm.files]
+  updated.splice(index, 1)
+  importForm.files = updated
+  fileNames.value.splice(index, 1)
 }
 
 function submitImport() {
@@ -68,9 +37,7 @@ function submitImport() {
     forceFormData: true,
     onSuccess: () => {
       importForm.reset()
-      fileName.value = ''
-      status.value = 'queued'
-      startPolling()
+      fileNames.value = []
     },
   })
 }
@@ -79,8 +46,6 @@ function submitCompute() {
   computeForm.post('/attendance/compute', {
     onSuccess: () => {
       computeForm.reset()
-      status.value = 'queued'
-      startPolling()
     },
   })
 }
@@ -92,40 +57,11 @@ function submitCompute() {
 
     <div class="max-w-2xl space-y-6">
 
-      <!-- Computation Status Banner -->
-      <div v-if="status === 'queued' || status === 'processing'"
-        class="bg-yellow-50 border border-yellow-200 rounded-xl p-4 flex items-center gap-3">
-        <svg class="w-5 h-5 text-yellow-500 animate-spin" fill="none" viewBox="0 0 24 24">
-          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
-        </svg>
-        <div>
-          <p class="text-sm font-medium text-yellow-800">DTR computation in progress...</p>
-          <p class="text-xs text-yellow-600">Tardiness, undertime, and overtime are being calculated. This page will update automatically.</p>
-        </div>
-      </div>
-
-      <div v-if="status === 'completed'"
-        class="bg-green-50 border border-green-200 rounded-xl p-4 flex items-center gap-3">
-        <svg class="w-5 h-5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
-        </svg>
-        <p class="text-sm font-medium text-green-800">DTR computation completed successfully.</p>
-      </div>
-
-      <div v-if="status === 'failed'"
-        class="bg-red-50 border border-red-200 rounded-xl p-4 flex items-center gap-3">
-        <svg class="w-5 h-5 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-        </svg>
-        <p class="text-sm font-medium text-red-800">DTR computation failed. Please try again or contact support.</p>
-      </div>
-
       <!-- Import Section -->
       <div class="bg-white rounded-xl shadow p-6">
-        <h2 class="text-base font-semibold text-gray-800 mb-1">Step 1 — Upload Attendance File</h2>
+        <h2 class="text-base font-semibold text-gray-800 mb-1">Step 1 — Upload Attendance Files</h2>
         <p class="text-sm text-gray-500 mb-5">
-          Upload a biometric <span class="font-mono text-xs bg-gray-100 px-1 rounded">.DAT</span> or CSV file
+          Upload one or more biometric <span class="font-mono text-xs bg-gray-100 px-1 rounded">.DAT</span> or CSV files
           exported from the biometric machine.
         </p>
 
@@ -155,26 +91,44 @@ function submitCompute() {
           </div>
 
           <div>
-            <label class="block text-xs font-medium text-gray-700 mb-2">Attendance File (.DAT or .CSV)</label>
+            <label class="block text-xs font-medium text-gray-700 mb-2">Attendance Files (.DAT, .CSV, or .TXT)</label>
             <div
               class="flex items-center gap-3 border-2 border-dashed rounded-lg px-4 py-5 cursor-pointer hover:border-blue-400 transition-colors"
-              :class="fileName ? 'border-blue-400 bg-blue-50' : 'border-gray-300'"
+              :class="fileNames.length ? 'border-blue-400 bg-blue-50' : 'border-gray-300'"
               @click="$refs.fileInput.click()">
               <svg class="w-8 h-8 text-gray-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
                   d="M9 13h6m-3-3v6m5 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
               </svg>
               <div>
-                <p class="text-sm font-medium text-gray-700">{{ fileName || 'Click to select a file' }}</p>
-                <p class="text-xs text-gray-400">DAT, CSV, or TXT</p>
+                <p class="text-sm font-medium text-gray-700">
+                  {{ fileNames.length ? `${fileNames.length} file${fileNames.length > 1 ? 's' : ''} selected` : 'Click to select files' }}
+                </p>
+                <p class="text-xs text-gray-400">DAT, CSV, or TXT — select multiple files at once</p>
               </div>
             </div>
-            <input ref="fileInput" type="file" accept=".dat,.csv,.txt" class="hidden" @change="onFileChange" />
-            <p v-if="importForm.errors.file" class="text-xs text-red-500 mt-1">{{ importForm.errors.file }}</p>
+            <input ref="fileInput" type="file" accept=".dat,.csv,.txt" multiple class="hidden" @change="onFileChange" />
+            <p v-if="importForm.errors.files" class="text-xs text-red-500 mt-1">{{ importForm.errors.files }}</p>
+            <p v-if="importForm.errors['files.0']" class="text-xs text-red-500 mt-1">{{ importForm.errors['files.0'] }}</p>
           </div>
 
-          <PrimaryButton type="submit" :loading="importForm.processing" :disabled="!importForm.file || !importForm.start_date || !importForm.end_date">
-            Import Attendance
+          <!-- File list -->
+          <div v-if="fileNames.length" class="space-y-1">
+            <div v-for="(name, i) in fileNames" :key="i"
+              class="flex items-center justify-between bg-gray-50 rounded-lg px-3 py-2">
+              <span class="text-sm text-gray-700 truncate">
+                <span class="font-mono text-xs text-gray-500 mr-2">{{ i + 1 }}.</span>
+                {{ name }}
+              </span>
+              <button type="button" @click="removeFile(i)" class="text-red-400 hover:text-red-600 text-xs ml-2">
+                ✕
+              </button>
+            </div>
+          </div>
+
+          <PrimaryButton type="submit" :loading="importForm.processing"
+            :disabled="!importForm.files.length || !importForm.start_date || !importForm.end_date">
+            Import {{ fileNames.length > 1 ? `${fileNames.length} Files` : 'Attendance' }}
           </PrimaryButton>
         </form>
       </div>

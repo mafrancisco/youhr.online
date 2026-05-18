@@ -24,21 +24,25 @@ class AttendanceComputationService
     /** Pre-loaded approved leave dates keyed by badgeID */
     private array $leaveDates = [];
 
+    /** Pre-loaded approved gate passes keyed by badgeID => [date => [passes]] */
+    private array $gatePasses = [];
+
     public function compute(string $startDate, string $endDate): void
     {
-        // Pre-load all schedules and leaves to avoid N+1 queries
+        // Pre-load all reference data to avoid N+1 queries
         $this->preloadSchedules();
         $this->preloadLeaves();
+        $this->preloadGatePasses($startDate, $endDate);
 
         // First pass: compute tardiness and initial undertime
         $this->firstPass($startDate, $endDate);
 
-        // Second pass: refine undertime and compute OT
+        // Second pass: refine undertime, compute OT, apply gate pass adjustments
         $this->secondPass($startDate, $endDate);
     }
 
     // -----------------------------------------------------------------------
-    // Pre-loading — eliminates hundreds of per-row queries
+    // Pre-loading
     // -----------------------------------------------------------------------
 
     private function preloadSchedules(): void
@@ -60,9 +64,41 @@ class AttendanceComputationService
             $expanded = $this->expandLeaveDates($leave->date_start ?? '');
             $this->leaveDates[$badge] = array_merge($this->leaveDates[$badge], $expanded);
         }
-        // Deduplicate
         foreach ($this->leaveDates as $badge => $dates) {
             $this->leaveDates[$badge] = array_unique($dates);
+        }
+    }
+
+    private function preloadGatePasses(string $startDate, string $endDate): void
+    {
+        // Load all approved gate passes within the date range
+        // gatepass_date is stored as Y-m-d format
+        $passes = DB::select("
+            SELECT badgeID, gatepass_type, gatepass_date, gatepass_timeout, gatepass_timein,
+                   actual_timeout, actual_timein
+            FROM gatepass
+            WHERE date_time_approved != ''
+              AND date_time_approved IS NOT NULL
+              AND gatepass_date BETWEEN ? AND ?
+        ", [$startDate, $endDate]);
+
+        foreach ($passes as $gp) {
+            $badge = $gp->badgeID;
+            // Convert gatepass_date (Y-m-d) to MM/DD/YYYY to match AttDate format
+            $dateParts = explode('-', $gp->gatepass_date);
+            if (count($dateParts) === 3) {
+                $attDateKey = $dateParts[1] . '/' . $dateParts[2] . '/' . $dateParts[0];
+            } else {
+                $attDateKey = $gp->gatepass_date;
+            }
+
+            if (!isset($this->gatePasses[$badge])) {
+                $this->gatePasses[$badge] = [];
+            }
+            if (!isset($this->gatePasses[$badge][$attDateKey])) {
+                $this->gatePasses[$badge][$attDateKey] = [];
+            }
+            $this->gatePasses[$badge][$attDateKey][] = $gp;
         }
     }
 
@@ -79,7 +115,6 @@ class AttendanceComputationService
             WHERE STR_TO_DATE(c.AttDate, '%m/%d/%Y') BETWEEN ? AND ?
         ", [$startDate, $endDate]);
 
-        // Batch updates to reduce individual UPDATE queries
         $tardinessUpdates = [];
         $leaveUpdates = [];
 
@@ -96,13 +131,12 @@ class AttendanceComputationService
 
             $hasOT = $this->isValidTime($OTin) && $this->isValidTime($OTout);
 
-            // Convert AttDate MM/DD/YYYY → YYYY-MM-DD
             [$m, $d, $y] = explode('/', $attDate);
             $dateYmd = "$y-$m-$d";
             $dayName = strtolower(date('D', strtotime($dateYmd)));
             $dayPrefix = $this->dayMap[$dayName];
 
-            // --- Cross-midnight punch handling (time2/time3/time4) ---
+            // --- Cross-midnight punch handling ---
             if ($this->isValidTime($time2) || $this->isValidTime($time3) || $this->isValidTime($time4)) {
                 $prevDate = date('m/d/Y', strtotime($dateYmd . ' -1 day'));
 
@@ -157,7 +191,7 @@ class AttendanceComputationService
             $tardiness = 0;
             $undertime = 0;
 
-            // --- Leave check (from pre-loaded data) ---
+            // --- Leave check ---
             if ($this->isOnLeave($badge, $attDate)) {
                 $leaveUpdates[] = [$badge, $attDate];
                 continue;
@@ -218,15 +252,10 @@ class AttendanceComputationService
             $tardinessUpdates[] = [$tardiness, $undertime, $badge, $attDate];
         }
 
-        // Batch execute tardiness/undertime updates
+        // Batch execute
         foreach ($tardinessUpdates as $params) {
-            DB::update("
-                UPDATE attendance_clean SET tardiness = ?, undertime = ?
-                WHERE BadgeNumber = ? AND AttDate = ?
-            ", $params);
+            DB::update("UPDATE attendance_clean SET tardiness = ?, undertime = ? WHERE BadgeNumber = ? AND AttDate = ?", $params);
         }
-
-        // Batch execute leave updates
         foreach ($leaveUpdates as [$badge, $attDate]) {
             DB::update("
                 UPDATE attendance_clean
@@ -238,7 +267,7 @@ class AttendanceComputationService
     }
 
     // -----------------------------------------------------------------------
-    // Second pass — refine undertime and compute OT
+    // Second pass — refine undertime, compute OT, apply gate pass adjustments
     // -----------------------------------------------------------------------
     private function secondPass(string $startDate, string $endDate): void
     {
@@ -250,7 +279,6 @@ class AttendanceComputationService
             WHERE STR_TO_DATE(c.AttDate, '%m/%d/%Y') BETWEEN ? AND ?
         ", [$startDate, $endDate]);
 
-        // Collect batch updates
         $updates = [];
 
         foreach ($rows as $row) {
@@ -263,13 +291,14 @@ class AttendanceComputationService
             $OTout   = trim($row->OTOut ?? '');
             $schedId = $row->schedule;
 
-            // Skip weekends
             [$m, $d, $y] = explode('/', $attDate);
             $dateYmd = "$y-$m-$d";
             $dayName = strtolower(date('D', strtotime($dateYmd)));
+
+            // Skip weekends
             if ($dayName === 'sat' || $dayName === 'sun') continue;
 
-            // Skip if on leave (from pre-loaded data)
+            // Skip if on leave
             if ($this->isOnLeave($badge, $attDate)) continue;
 
             $hasStartPair = $this->isValidTime($time1) && $this->isValidTime($time4);
@@ -283,6 +312,7 @@ class AttendanceComputationService
 
             if ($hasStartPair && $schedId) {
                 $sched = $this->getScheduleForDay($schedId, $dayPrefix);
+                $schedIn  = $sched['timein'];
                 $schedOut = $sched['timeout'];
                 $crossday = $sched['crossday'];
 
@@ -309,6 +339,7 @@ class AttendanceComputationService
                 }
             }
 
+            // Compute OT
             if ($hasOTTimes) {
                 $OTinSec  = strtotime("$dateYmd $OTIn");
                 $OToutSec = strtotime("$dateYmd $OTout");
@@ -321,36 +352,109 @@ class AttendanceComputationService
                 if ($overtime < 0) $overtime = 0;
             }
 
+            // --- Gate Pass Adjustment ---
+            $gpUndertime = $this->computeGatePassUndertime($badge, $attDate, $dateYmd, $schedId, $dayPrefix);
+            $undertime += $gpUndertime;
+
             $updates[] = [$undertime, $overtime, $id];
         }
 
-        // Batch execute updates
         foreach ($updates as $params) {
             DB::update("UPDATE attendance_clean SET undertime = ?, OT = ? WHERE id = ?", $params);
         }
     }
 
     // -----------------------------------------------------------------------
-    // Helpers
+    // Gate Pass undertime computation
+    // -----------------------------------------------------------------------
+
+    /**
+     * Compute additional undertime from Personal gate passes for a given day.
+     * Official Business and Official Time are NOT deducted.
+     * Personal gate passes are deducted, excluding lunch break overlap.
+     */
+    private function computeGatePassUndertime(string $badge, string $attDate, string $dateYmd, mixed $schedId, string $dayPrefix): int
+    {
+        $passes = $this->gatePasses[$badge][$attDate] ?? [];
+        if (empty($passes)) return 0;
+
+        // Get lunch break times from schedule (breakout = lunch start, breakin = lunch end)
+        $sched = $this->getScheduleForDay($schedId, $dayPrefix);
+        $lunchStart = $sched['breakout'] ?? '';
+        $lunchEnd   = $sched['breakin'] ?? '';
+
+        $hasLunch = $this->isValidTime($lunchStart) && $this->isValidTime($lunchEnd);
+        $lunchStartSec = $hasLunch ? strtotime("$dateYmd $lunchStart") : 0;
+        $lunchEndSec   = $hasLunch ? strtotime("$dateYmd $lunchEnd") : 0;
+
+        $totalPersonalMinutes = 0;
+
+        foreach ($passes as $gp) {
+            // Only Personal gate passes are deducted
+            if ($gp->gatepass_type !== 'Personal') continue;
+
+            // Use actual times if available, otherwise use requested times
+            $timeout = trim($gp->actual_timeout ?: $gp->gatepass_timeout ?? '');
+            $timein  = trim($gp->actual_timein ?: $gp->gatepass_timein ?? '');
+
+            if (!$this->isValidTime($timeout) || !$this->isValidTime($timein)) continue;
+
+            $gpOutSec = strtotime("$dateYmd $timeout");
+            $gpInSec  = strtotime("$dateYmd $timein");
+
+            // Handle cross-midnight (unlikely for gate pass but be safe)
+            if ($gpInSec <= $gpOutSec) continue; // invalid: timein must be after timeout
+
+            $gpDuration = $gpInSec - $gpOutSec; // total seconds out
+
+            // Subtract lunch break overlap if it crosses lunch period
+            if ($hasLunch) {
+                $overlapStart = max($gpOutSec, $lunchStartSec);
+                $overlapEnd   = min($gpInSec, $lunchEndSec);
+
+                if ($overlapEnd > $overlapStart) {
+                    // There is overlap with lunch break — subtract it
+                    $gpDuration -= ($overlapEnd - $overlapStart);
+                }
+            }
+
+            if ($gpDuration > 0) {
+                $totalPersonalMinutes += (int) round($gpDuration / 60);
+            }
+        }
+
+        return $totalPersonalMinutes;
+    }
+
+    // -----------------------------------------------------------------------
+    // Schedule helper (extended to include breakout/breakin)
     // -----------------------------------------------------------------------
 
     private function getScheduleForDay(mixed $schedId, string $dayPrefix): array
     {
         $sched = $this->schedules[$schedId] ?? null;
         if (!$sched) {
-            return ['timein' => '', 'timeout' => '', 'crossday' => 0];
+            return ['timein' => '', 'timeout' => '', 'crossday' => 0, 'breakout' => '', 'breakin' => ''];
         }
 
         $timeinCol   = $dayPrefix . '_timein';
         $timeoutCol  = $dayPrefix . '_timeout';
         $crossdayCol = $dayPrefix . '_crossday';
+        $breakoutCol = $dayPrefix . '_breakout';
+        $breakinCol  = $dayPrefix . '_breakin';
 
         return [
             'timein'   => $sched->$timeinCol ?? '',
             'timeout'  => $sched->$timeoutCol ?? '',
             'crossday' => $sched->$crossdayCol ?? 0,
+            'breakout' => $sched->$breakoutCol ?? '',
+            'breakin'  => $sched->$breakinCol ?? '',
         ];
     }
+
+    // -----------------------------------------------------------------------
+    // Other helpers
+    // -----------------------------------------------------------------------
 
     private function isValidTime(string $time): bool
     {
