@@ -167,40 +167,59 @@ class LeaveController extends Controller
 
     public function adminIndex(): Response
     {
-        $leaves = Leave::with(['type', 'employee'])
+        $mapLeave = function ($l) {
+            $credit = \App\Models\LeaveCredit::where('badgeID', $l->badgeID)->first();
+            return [
+                'id'         => $l->id,
+                'controlno'  => $l->controlno,
+                'empName'    => $l->employee?->empName,
+                'badgeID'    => $l->badgeID,
+                'date_filed' => $l->date_filed,
+                'type_name'  => $l->type?->full_name,
+                'dates'      => $l->date_start,
+                'noofdays'   => $l->noofdays,
+                'details'    => $l->leave_details,
+                'status'     => $l->status,
+                'dateUpdated' => $l->dateUpdated,
+                'credits'    => $credit ? [
+                    'vl'        => (float) $credit->vl,
+                    'sl'        => (float) $credit->sl,
+                    'maternity' => (float) $credit->maternity,
+                    'paternity' => (float) $credit->paternity,
+                    'spl'       => (float) $credit->spl,
+                    'forced'    => (float) $credit->forced,
+                    'wellness'  => (float) $credit->wellness,
+                    'ot'        => (float) $credit->ot,
+                    'service'   => (float) $credit->service,
+                ] : null,
+            ];
+        };
+
+        $pending = Leave::with(['type', 'employee'])
             ->where('status', 'Pending')
             ->orderByDesc('id')
             ->get()
-            ->map(function ($l) {
-                // Get employee's leave credit balance
-                $credit = \App\Models\LeaveCredit::where('badgeID', $l->badgeID)->first();
+            ->map($mapLeave);
 
-                return [
-                    'id'         => $l->id,
-                    'controlno'  => $l->controlno,
-                    'empName'    => $l->employee?->empName,
-                    'badgeID'    => $l->badgeID,
-                    'date_filed' => $l->date_filed,
-                    'type_name'  => $l->type?->full_name,
-                    'dates'      => $l->date_start,
-                    'noofdays'   => $l->noofdays,
-                    'details'    => $l->leave_details,
-                    'status'     => $l->status,
-                    'credits'    => $credit ? [
-                        'vl'        => (float) $credit->vl,
-                        'sl'        => (float) $credit->sl,
-                        'maternity' => (float) $credit->maternity,
-                        'paternity' => (float) $credit->paternity,
-                        'spl'       => (float) $credit->spl,
-                        'forced'    => (float) $credit->forced,
-                        'wellness'  => (float) $credit->wellness,
-                        'ot'        => (float) $credit->ot,
-                        'service'   => (float) $credit->service,
-                    ] : null,
-                ];
-            });
+        $approved = Leave::with(['type', 'employee'])
+            ->where('status', 'Approved')
+            ->orderByDesc('dateUpdated')
+            ->limit(100)
+            ->get()
+            ->map($mapLeave);
 
-        return Inertia::render('Leaves/Admin', ['leaves' => $leaves]);
+        $declined = Leave::with(['type', 'employee'])
+            ->where('status', 'Cancelled')
+            ->orderByDesc('dateUpdated')
+            ->limit(100)
+            ->get()
+            ->map($mapLeave);
+
+        return Inertia::render('Leaves/Admin', [
+            'pending'  => $pending,
+            'approved' => $approved,
+            'declined' => $declined,
+        ]);
     }
 
     public function update(Request $request, Leave $leave)

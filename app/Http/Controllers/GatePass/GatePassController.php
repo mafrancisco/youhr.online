@@ -101,25 +101,48 @@ class GatePassController extends Controller
 
     public function adminIndex(): Response
     {
-        $passes = GatePass::with('employee')
+        $mapPass = fn($g) => [
+            'id'                 => $g->id,
+            'controlno'          => $g->controlno,
+            'empName'            => $g->employee?->empName,
+            'gatepass_type'      => $g->gatepass_type,
+            'gatepass_date'      => $g->gatepass_date,
+            'gatepass_timeout'   => $g->gatepass_timeout,
+            'gatepass_timein'    => $g->gatepass_timein,
+            'purpose'            => $g->purpose,
+            'destination'        => $g->destination,
+            'gatepass_datefiled' => $g->gatepass_datefiled,
+            'date_time_approved' => $g->date_time_approved,
+            'status'             => $g->status,
+        ];
+
+        $pending = GatePass::with('employee')
             ->where(fn($q) => $q->whereNull('date_time_approved')->orWhere('date_time_approved', ''))
             ->where('status', '!=', 'Cancelled')
             ->orderByDesc('gatepass_date')
             ->get()
-            ->map(fn($g) => [
-                'id'                 => $g->id,
-                'controlno'          => $g->controlno,
-                'empName'            => $g->employee?->empName,
-                'gatepass_type'      => $g->gatepass_type,
-                'gatepass_date'      => $g->gatepass_date,
-                'gatepass_timeout'   => $g->gatepass_timeout,
-                'gatepass_timein'    => $g->gatepass_timein,
-                'purpose'            => $g->purpose,
-                'destination'        => $g->destination,
-                'gatepass_datefiled' => $g->gatepass_datefiled,
-            ]);
+            ->map($mapPass);
 
-        return Inertia::render('GatePass/Admin', ['passes' => $passes]);
+        $approved = GatePass::with('employee')
+            ->where('status', 'Approved')
+            ->where('date_time_approved', '!=', '')
+            ->orderByDesc('date_time_approved')
+            ->limit(100)
+            ->get()
+            ->map($mapPass);
+
+        $declined = GatePass::with('employee')
+            ->where('status', 'Cancelled')
+            ->orderByDesc('gatepass_date')
+            ->limit(100)
+            ->get()
+            ->map($mapPass);
+
+        return Inertia::render('GatePass/Admin', [
+            'pending'  => $pending,
+            'approved' => $approved,
+            'declined' => $declined,
+        ]);
     }
 
     public function approve(Request $request, GatePass $gp)
