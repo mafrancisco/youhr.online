@@ -28,6 +28,7 @@ const hrNav = computed(() => [
   { href: '/admin/divisions',           label: 'Divisions',          icon: '🏢', badge: 0 },
   { href: '/admin/employee-statuses',  label: 'Employee Statuses',  icon: '📊', badge: 0 },
   { href: '/admin/leave-types',       label: 'Leave Types',        icon: '📑', badge: 0 },
+  { href: '/admin/time-detection',   label: 'Time Detection',     icon: '⏱', badge: 0 },
   { href: '/biometric/devices',        label: 'Biometric Devices',  icon: '🖐', badge: 0 },
   { href: '/admin/settings',    label: 'Settings',        icon: '⚙️', badge: 0 },
 ])

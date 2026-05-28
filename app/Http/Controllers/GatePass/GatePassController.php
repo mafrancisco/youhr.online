@@ -43,7 +43,7 @@ class GatePassController extends Controller
     {
         $request->validate([
             'gatepass_type'    => ['required', 'in:Official Business,Official Time,Personal'],
-            'gatepass_date'    => ['required', 'date'],
+            'gatepass_date'    => ['required', 'date', 'after_or_equal:today'],
             'gatepass_timeout' => ['nullable', 'date_format:H:i'],
             'gatepass_timein'  => ['nullable', 'date_format:H:i'],
             'purpose'          => ['required', 'string', 'max:255'],
@@ -150,37 +150,147 @@ class GatePassController extends Controller
         $employee = $gp->employee;
         $s        = Setting::current();
 
+        $chk = fn(bool $on) => $on ? '&#9745;' : '&#9744;';
+
+        $systemName = htmlspecialchars($s->system_name ?: 'DTR System');
+        $address    = htmlspecialchars($s->company_address ?: '');
+        $signatory  = $s->authorized_signatory ? strtoupper($s->authorized_signatory) : '';
+        $sigPos     = htmlspecialchars($s->authorized_signatory_position ?: '');
+
+        $empName  = strtoupper($employee?->empName ?? '');
+        $empDesig = htmlspecialchars($employee?->empDesig ?? '');
+
         $logoHtml = '';
         if ($s->logo_path) {
             $logoPath = $s->logoPublicPath();
-            if (file_exists($logoPath)) {
-                $logoHtml = '<img src="' . $logoPath . '" height="40px"><br>';
+            if ($logoPath && file_exists($logoPath)) {
+                $logoHtml = '<img src="' . $logoPath . '" height="35" style="vertical-align:middle;"> &nbsp;';
             }
         }
-        $signatory = $s->authorized_signatory
-            ? '<br><br><table width="100%"><tr>
-                <td width="50%" align="center"><b>' . strtoupper($employee?->empName ?? '') . '</b><br><small>Employee</small></td>
-                <td width="50%" align="center"><b>' . strtoupper($s->authorized_signatory) . '</b><br><small>' . htmlspecialchars($s->authorized_signatory_position) . '</small></td>
-               </tr></table>'
-            : '';
 
-        $html = '<div style="text-align:center;font-family:Arial;">'
-              . $logoHtml
-              . '<b>' . htmlspecialchars($s->system_name) . '</b><br>'
-              . ($s->company_address ? '<small>' . htmlspecialchars($s->company_address) . '</small><br>' : '')
-              . '</div><br>'
-              . '<h3 style="text-align:center;">Gate Pass</h3>'
-              . '<p><b>Control No:</b> ' . $gp->controlno . '</p>'
-              . '<p><b>Name:</b> ' . ($employee?->empName ?? '') . '</p>'
-              . '<p><b>Type:</b> ' . $gp->gatepass_type . '</p>'
-              . '<p><b>Date:</b> ' . $gp->gatepass_date . '</p>'
-              . '<p><b>Time Out:</b> ' . $gp->gatepass_timeout . ' &nbsp; <b>Time In:</b> ' . $gp->gatepass_timein . '</p>'
-              . '<p><b>Purpose:</b> ' . htmlspecialchars($gp->purpose) . '</p>'
-              . '<p><b>Destination:</b> ' . htmlspecialchars($gp->destination) . '</p>'
-              . '<p><b>Status:</b> ' . $gp->status . '</p>'
-              . $signatory;
+        $html = '
+<style>
+    body { font-family: Arial, sans-serif; font-size: 9pt; }
+    table { border-collapse: collapse; width: 100%; }
+    .bordered td, .bordered th { border: 0.5px solid #000; padding: 4px 6px; }
+    .nb td { border: none; padding: 2px 4px; }
+    .center { text-align: center; }
+    .bold { font-weight: bold; }
+    .small { font-size: 7.5pt; }
+    .sig-line { border-bottom: 1px solid #000; width: 60%; margin: 0 auto; margin-top: 30px; }
+</style>
 
-        $mpdf = new \Mpdf\Mpdf(['format' => 'A4', 'margin_top' => 20, 'margin_bottom' => 20, 'margin_left' => 25, 'margin_right' => 25]);
+<!-- HEADER -->
+<table class="nb">
+    <tr><td class="center bold" style="font-size: 11pt;">
+        ' . $logoHtml . $systemName . '
+    </td></tr>
+    ' . ($address ? '<tr><td class="center small">' . $address . '</td></tr>' : '') . '
+    <tr><td class="center bold" style="font-size: 10pt; padding-top: 8px;">
+        ASSIGNMENT SLIP / EMPLOYEE GATE PASS
+    </td></tr>
+</table>
+
+<br>
+
+<!-- DETAILS TABLE -->
+<table class="bordered">
+    <tr>
+        <td width="65%">&nbsp;</td>
+        <td width="15%" class="bold">CONTROL NO:</td>
+        <td width="20%">' . htmlspecialchars($gp->controlno) . '</td>
+    </tr>
+    <tr>
+        <td>&nbsp;</td>
+        <td class="bold">DATE:</td>
+        <td>' . htmlspecialchars($gp->gatepass_date) . '</td>
+    </tr>
+</table>
+
+<br>
+
+<table class="bordered">
+    <tr>
+        <td width="20%" class="bold">NAME:</td>
+        <td colspan="3">' . $empName . '</td>
+    </tr>
+    <tr>
+        <td class="bold">POSITION:</td>
+        <td colspan="3">' . $empDesig . '</td>
+    </tr>
+    <tr>
+        <td class="bold">TIME OUT:</td>
+        <td width="30%">' . htmlspecialchars($gp->gatepass_timeout) . '</td>
+        <td width="15%" class="bold">TIME IN:</td>
+        <td width="35%">' . htmlspecialchars($gp->gatepass_timein) . '</td>
+    </tr>
+    <tr>
+        <td class="bold">DESTINATION:</td>
+        <td colspan="3">' . htmlspecialchars($gp->destination) . '</td>
+    </tr>
+    <tr>
+        <td class="bold">PURPOSE:</td>
+        <td colspan="3">' . htmlspecialchars($gp->purpose) . '</td>
+    </tr>
+</table>
+
+<br>
+
+<!-- TYPE CHECKBOXES -->
+<table class="nb">
+    <tr><td>&nbsp;&nbsp;&nbsp;' . $chk($gp->gatepass_type === 'Official Business') . ' &nbsp;Official Business</td></tr>
+    <tr><td>&nbsp;&nbsp;&nbsp;' . $chk($gp->gatepass_type === 'Official Time') . ' &nbsp;Official Time</td></tr>
+    <tr><td>&nbsp;&nbsp;&nbsp;' . $chk($gp->gatepass_type === 'Personal') . ' &nbsp;Personal</td></tr>
+</table>
+
+<br>
+
+<!-- RECOMMENDING APPROVAL -->
+<table class="nb">
+    <tr><td>Recommending Approval:</td></tr>
+    <tr><td><br><br></td></tr>
+    <tr><td><b><u>' . $signatory . '</u></b></td></tr>
+    <tr><td class="small">' . $sigPos . '</td></tr>
+</table>
+
+<br>
+
+<!-- APPROVED -->
+<table class="nb">
+    <tr><td>Approved:</td></tr>
+    <tr><td><br><br></td></tr>
+    <tr><td><b><u>' . $signatory . '</u></b></td></tr>
+    <tr><td class="small">' . $sigPos . '</td></tr>
+</table>
+
+<br>
+<hr>
+
+<!-- CERTIFICATE OF APPEARANCE (2 columns) -->
+<table width="100%">
+    <tr valign="top">
+        <td width="50%" style="padding-right: 10px;">
+            ' . $this->certificateOfAppearance() . '
+        </td>
+        <td width="50%" style="padding-left: 10px;">
+            ' . $this->certificateOfAppearance() . '
+        </td>
+    </tr>
+</table>
+
+<br>
+<table class="nb">
+    <tr><td class="small">PSHS-00-F-HRU-16-Ver02-Rev1-10/18/20</td></tr>
+</table>';
+
+        $mpdf = new \Mpdf\Mpdf([
+            'format'        => 'A4',
+            'margin_top'    => 15,
+            'margin_bottom' => 10,
+            'margin_left'   => 20,
+            'margin_right'  => 20,
+            'default_font'  => 'arial',
+        ]);
         $mpdf->WriteHTML($html);
         $filename = 'GatePass-' . $gp->controlno . '.pdf';
 
@@ -189,5 +299,38 @@ class GatePassController extends Controller
             $filename,
             ['Content-Type' => 'application/pdf']
         );
+    }
+
+    private function certificateOfAppearance(): string
+    {
+        return '
+        <table style="border-collapse:collapse; width:100%;">
+            <tr><td style="border:none; text-align:center; font-weight:bold; font-size:9pt; padding-bottom:6px;">
+                CERTIFICATE OF APPEARANCE
+            </td></tr>
+            <tr><td style="border:none; font-size:8pt; padding-bottom:4px;">
+                This is to certify that I attended to Mr./ Ms. _______________,
+                of PSH-CRC on _____ at _____ a.m./p.m.
+            </td></tr>
+            <tr><td style="border:none; font-size:8pt; padding-bottom:12px;">
+                when he/she transacted business with my Agency/ Company.
+            </td></tr>
+            <tr><td style="border:none; padding-top:20px; border-bottom:0.5px solid #000; width:80%; font-size:8pt;">
+                &nbsp;
+            </td></tr>
+            <tr><td style="border:none; text-align:center; font-size:7pt;">
+                Signature over Printed Name<br>of Attending Employee/ Position
+            </td></tr>
+            <tr><td style="border:none; font-size:8pt; padding-top:8px;">
+                Date ____________<br>
+                Name of Agency/ies: ____________<br>
+                Address: ____________<br>
+                Tel.No.: ____________
+            </td></tr>
+            <tr><td style="border:none; font-size:7pt; padding-top:6px; font-style:italic;">
+                In case an employee buys office supplies, said employee shall attach an
+                authenticated copy of OR of purchase.
+            </td></tr>
+        </table>';
     }
 }

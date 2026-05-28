@@ -9,7 +9,7 @@ class LeaveCredit extends Model
 {
     protected $table      = 'lcredits';
     public    $timestamps = false;
-    protected $fillable   = ['badgeID', 'vl', 'sl', 'ot', 'service', 'dateupdated'];
+    protected $fillable   = ['badgeID', 'vl', 'sl', 'maternity', 'paternity', 'spl', 'forced', 'wellness', 'ot', 'service', 'dateupdated'];
 
     public function employee(): BelongsTo
     {

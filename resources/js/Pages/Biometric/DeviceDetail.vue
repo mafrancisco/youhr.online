@@ -14,6 +14,16 @@ const props = defineProps({
 
 const activeTab = ref('users')
 
+// ─── Process Logs ────────────────────────────────────────────────────────────
+const processForm = useForm({
+  start_date: new Date().toISOString().slice(0, 8) + '01',
+  end_date:   new Date().toISOString().slice(0, 10),
+})
+
+function processLogs() {
+  processForm.post('/biometric/process-logs')
+}
+
 // ─── User Mapping ────────────────────────────────────────────────────────────
 const mapTarget = ref(null)
 const mapForm = useForm({ badge_id: '' })
@@ -119,13 +129,13 @@ const historyColumns = [
 
     <!-- Tabs -->
     <div class="flex gap-1 mb-4 border-b">
-      <button v-for="tab in ['users', 'logs', 'history']" :key="tab"
+      <button v-for="tab in ['users', 'logs', 'process', 'history']" :key="tab"
         @click="activeTab = tab"
         class="px-4 py-2 text-sm font-medium border-b-2 transition-colors capitalize"
         :class="activeTab === tab
           ? 'border-blue-600 text-blue-600'
           : 'border-transparent text-gray-500 hover:text-gray-700'">
-        {{ tab }}
+        {{ tab === 'process' ? 'Process Logs' : tab }}
         <span v-if="tab === 'users'" class="ml-1 text-xs text-gray-400">({{ users.length }})</span>
         <span v-if="tab === 'logs'" class="ml-1 text-xs text-gray-400">({{ recentLogs.length }})</span>
       </button>
@@ -172,6 +182,47 @@ const historyColumns = [
 
     <!-- History Tab -->
     <div v-show="activeTab === 'history'">
+
+    <!-- Process Logs Tab -->
+    <div v-show="activeTab === 'process'">
+      <div class="bg-white rounded-xl shadow p-6 max-w-lg">
+        <h3 class="text-sm font-bold text-gray-900 mb-1">Process Biometric Logs into DTR</h3>
+        <p class="text-xs text-gray-500 mb-4">
+          This will take synced biometric logs, apply the Time Detection Rules based on each employee's schedule,
+          and generate attendance records (Time In, Break Out, Break In, Time Out). DTR computation (tardiness, undertime, OT) will run automatically after.
+        </p>
+
+        <form @submit.prevent="processLogs" class="space-y-4">
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <label class="block text-xs font-medium text-gray-700 mb-1">Start Date</label>
+              <input v-model="processForm.start_date" type="date" required
+                class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-gray-700 mb-1">End Date</label>
+              <input v-model="processForm.end_date" type="date" required
+                class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
+            </div>
+          </div>
+
+          <PrimaryButton type="submit" :loading="processForm.processing">
+            Process Logs & Compute DTR
+          </PrimaryButton>
+        </form>
+
+        <div class="mt-4 bg-blue-50 border border-blue-200 rounded-lg p-3 text-xs text-blue-700">
+          <p class="font-medium mb-1">Process Flow:</p>
+          <ol class="list-decimal ml-4 space-y-0.5">
+            <li>Reads unprocessed biometric logs in the date range</li>
+            <li>Maps device user IDs to employee badge IDs</li>
+            <li>Applies Time Detection Rules (schedule-based classification)</li>
+            <li>Writes classified times to attendance records</li>
+            <li>Computes tardiness, undertime, and overtime</li>
+          </ol>
+        </div>
+      </div>
+    </div>
       <DataTable :columns="historyColumns" :rows="syncHistory">
         <template #cell-status="{ row }">
           <StatusBadge :status="row.status" />

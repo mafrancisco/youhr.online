@@ -271,6 +271,11 @@ class AttendanceComputationService
     // -----------------------------------------------------------------------
     private function secondPass(string $startDate, string $endDate): void
     {
+        // Load OT threshold: minutes after scheduled timeout where OT starts
+        // The 'otin' setting's before_minutes field stores this offset
+        $otSetting = DB::selectOne("SELECT before_minutes FROM time_detection_settings WHERE punch_type = 'otin' LIMIT 1");
+        $otOffsetMinutes = $otSetting ? (int) $otSetting->before_minutes : 0;
+
         $rows = DB::select("
             SELECT c.id, c.StartTime1, c.StartTime2, c.StartTime3, c.StartTime4,
                    c.BadgeNumber, c.AttDate, c.OTIn, c.OTOut, e.schedule
@@ -287,8 +292,6 @@ class AttendanceComputationService
             $attDate = $row->AttDate;
             $time1   = trim($row->StartTime1 ?? '');
             $time4   = trim($row->StartTime4 ?? '');
-            $OTIn    = trim($row->OTIn ?? '');
-            $OTout   = trim($row->OTOut ?? '');
             $schedId = $row->schedule;
 
             [$m, $d, $y] = explode('/', $attDate);
@@ -302,15 +305,13 @@ class AttendanceComputationService
             if ($this->isOnLeave($badge, $attDate)) continue;
 
             $hasStartPair = $this->isValidTime($time1) && $this->isValidTime($time4);
-            $hasOTTimes   = $this->isValidTime($OTIn) && $this->isValidTime($OTout);
-
-            if (!$hasStartPair && !$hasOTTimes) continue;
+            if (!$hasStartPair) continue;
 
             $dayPrefix = $this->dayMap[$dayName];
             $undertime = 0;
             $overtime  = 0;
 
-            if ($hasStartPair && $schedId) {
+            if ($schedId) {
                 $sched = $this->getScheduleForDay($schedId, $dayPrefix);
                 $schedIn  = $sched['timein'];
                 $schedOut = $sched['timeout'];
@@ -332,24 +333,18 @@ class AttendanceComputationService
                     $actualOutSec = strtotime("$dateYmd $time4 +1 day");
                 }
 
-                if ($actualOutSec >= $startTime1Sec) {
-                    if ($actualOutSec < $schedOutSec) {
-                        $undertime = (int) round(($schedOutSec - $actualOutSec) / 60);
-                    }
-                }
-            }
-
-            // Compute OT
-            if ($hasOTTimes) {
-                $OTinSec  = strtotime("$dateYmd $OTIn");
-                $OToutSec = strtotime("$dateYmd $OTout");
-
-                if ($OToutSec < $OTinSec) {
-                    $OToutSec = strtotime("$dateYmd $OTout +1 day");
+                // Undertime: employee left before scheduled timeout
+                if ($actualOutSec >= $startTime1Sec && $actualOutSec < $schedOutSec) {
+                    $undertime = (int) round(($schedOutSec - $actualOutSec) / 60);
                 }
 
-                $overtime = (int) round(($OToutSec - $OTinSec) / 60);
-                if ($overtime < 0) $overtime = 0;
+                // Overtime: time worked beyond OT threshold
+                // OT threshold = scheduled timeout + offset minutes
+                $otThresholdSec = $schedOutSec + ($otOffsetMinutes * 60);
+                if ($actualOutSec > $otThresholdSec) {
+                    $overtime = (int) round(($actualOutSec - $otThresholdSec) / 60);
+                    if ($overtime < 0) $overtime = 0;
+                }
             }
 
             // --- Gate Pass Adjustment ---

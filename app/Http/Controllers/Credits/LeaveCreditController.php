@@ -22,6 +22,11 @@ class LeaveCreditController extends Controller
                 'empName'     => $c->employee?->empName,
                 'vl'          => $c->vl,
                 'sl'          => $c->sl,
+                'maternity'   => $c->maternity,
+                'paternity'   => $c->paternity,
+                'spl'         => $c->spl,
+                'forced'      => $c->forced,
+                'wellness'    => $c->wellness,
                 'ot'          => $c->ot,
                 'service'     => $c->service,
                 'dateupdated' => $c->dateupdated,
@@ -43,7 +48,11 @@ class LeaveCreditController extends Controller
         $request->validate(['badgeID' => ['required', 'exists:employees,badgeID']]);
         LeaveCredit::firstOrCreate(
             ['badgeID' => $request->badgeID],
-            ['vl' => 0, 'sl' => 0, 'ot' => 0, 'service' => 0, 'dateupdated' => now()->toDateString()]
+            [
+                'vl' => 0, 'sl' => 0, 'maternity' => 0, 'paternity' => 0,
+                'spl' => 0, 'forced' => 0, 'wellness' => 0,
+                'ot' => 0, 'service' => 0, 'dateupdated' => now()->toDateString(),
+            ]
         );
         return back()->with('success', 'Leave credit record created.');
     }
@@ -51,14 +60,22 @@ class LeaveCreditController extends Controller
     public function update(Request $request, string $badgeID)
     {
         $request->validate([
-            'vl'      => ['required', 'numeric', 'min:0'],
-            'sl'      => ['required', 'numeric', 'min:0'],
-            'ot'      => ['required', 'numeric', 'min:0'],
-            'service' => ['required', 'numeric', 'min:0'],
+            'vl'        => ['required', 'numeric', 'min:0'],
+            'sl'        => ['required', 'numeric', 'min:0'],
+            'maternity' => ['required', 'numeric', 'min:0'],
+            'paternity' => ['required', 'numeric', 'min:0'],
+            'spl'       => ['required', 'numeric', 'min:0'],
+            'forced'    => ['required', 'numeric', 'min:0'],
+            'wellness'  => ['required', 'numeric', 'min:0'],
+            'ot'        => ['required', 'numeric', 'min:0'],
+            'service'   => ['required', 'numeric', 'min:0'],
         ]);
 
         $credit = LeaveCredit::where('badgeID', $badgeID)->firstOrFail();
-        $credit->update([...$request->only(['vl','sl','ot','service']), 'dateupdated' => now()->toDateString()]);
+        $credit->update([
+            ...$request->only(['vl', 'sl', 'maternity', 'paternity', 'spl', 'forced', 'wellness', 'ot', 'service']),
+            'dateupdated' => now()->toDateString(),
+        ]);
         return back()->with('success', 'Leave credits updated.');
     }
 }

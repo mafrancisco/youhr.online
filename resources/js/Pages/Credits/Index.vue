@@ -10,13 +10,18 @@ defineProps({
 })
 
 const columns = [
-  { key: 'badgeID',      label: 'Badge ID',        cellClass: 'font-mono text-gray-600' },
-  { key: 'empName',      label: 'Name',            cellClass: 'font-medium text-gray-900' },
-  { key: 'vl',           label: 'Vacation Leave',  headerClass: 'text-right', cellClass: 'text-right text-gray-700' },
-  { key: 'sl',           label: 'Sick Leave',      headerClass: 'text-right', cellClass: 'text-right text-gray-700' },
-  { key: 'ot',           label: 'OT Credits',      headerClass: 'text-right', cellClass: 'text-right text-gray-700' },
-  { key: 'service',      label: 'Service Credits', headerClass: 'text-right', cellClass: 'text-right text-gray-700' },
-  { key: 'dateupdated',  label: 'Updated',         cellClass: 'text-gray-400 text-xs' },
+  { key: 'badgeID',      label: 'Badge ID',     cellClass: 'font-mono text-gray-600' },
+  { key: 'empName',      label: 'Name',         cellClass: 'font-medium text-gray-900' },
+  { key: 'vl',           label: 'VL',           headerClass: 'text-right', cellClass: 'text-right text-gray-700' },
+  { key: 'sl',           label: 'SL',           headerClass: 'text-right', cellClass: 'text-right text-gray-700' },
+  { key: 'maternity',    label: 'Maternity',    headerClass: 'text-right', cellClass: 'text-right text-gray-700' },
+  { key: 'paternity',    label: 'Paternity',    headerClass: 'text-right', cellClass: 'text-right text-gray-700' },
+  { key: 'spl',          label: 'SPL',          headerClass: 'text-right', cellClass: 'text-right text-gray-700' },
+  { key: 'forced',       label: 'Forced',       headerClass: 'text-right', cellClass: 'text-right text-gray-700' },
+  { key: 'wellness',     label: 'Wellness',     headerClass: 'text-right', cellClass: 'text-right text-gray-700' },
+  { key: 'ot',           label: 'OT',           headerClass: 'text-right', cellClass: 'text-right text-gray-700' },
+  { key: 'service',      label: 'Service',      headerClass: 'text-right', cellClass: 'text-right text-gray-700' },
+  { key: 'dateupdated',  label: 'Updated',      cellClass: 'text-gray-400 text-xs' },
 ]
 
 const addModal   = ref(false)
@@ -25,20 +30,30 @@ const editTarget = ref(null)
 const addForm = useForm({ badgeID: '' })
 
 const editForm = useForm({
-  vl:      '',
-  sl:      '',
-  ot:      '',
-  service: '',
+  vl:        '',
+  sl:        '',
+  maternity: '',
+  paternity: '',
+  spl:       '',
+  forced:    '',
+  wellness:  '',
+  ot:        '',
+  service:   '',
 })
 
 function openEdit(credit) {
   editForm.reset()
   editForm.clearErrors()
-  editForm.vl      = credit.vl
-  editForm.sl      = credit.sl
-  editForm.ot      = credit.ot
-  editForm.service = credit.service
-  editTarget.value = credit
+  editForm.vl        = credit.vl
+  editForm.sl        = credit.sl
+  editForm.maternity = credit.maternity
+  editForm.paternity = credit.paternity
+  editForm.spl       = credit.spl
+  editForm.forced    = credit.forced
+  editForm.wellness  = credit.wellness
+  editForm.ot        = credit.ot
+  editForm.service   = credit.service
+  editTarget.value   = credit
 }
 
 function closeEdit() {
@@ -80,6 +95,7 @@ function submitEdit() {
         <form @submit.prevent="submitAdd" id="add-form" class="space-y-3">
           <SelectInput label="Employee" v-model="addForm.badgeID" :error="addForm.errors.badgeID"
             :options="employees.map(e => ({ value: e.badgeID, label: e.empName }))" />
+          <p class="text-xs text-gray-500">Only employees without existing credit records are shown.</p>
         </form>
       </template>
       <template #footer>
@@ -89,14 +105,30 @@ function submitEdit() {
     </Modal>
 
     <!-- Edit modal -->
-    <Modal :show="!!editTarget" size="sm" @close="closeEdit">
+    <Modal :show="!!editTarget" size="lg" @close="closeEdit">
       <template #header>Edit Credits — {{ editTarget?.empName }}</template>
       <template #body>
-        <form @submit.prevent="submitEdit" id="edit-form" class="grid grid-cols-2 gap-3">
-          <FormInput label="Vacation Leave" v-model="editForm.vl" type="number" />
-          <FormInput label="Sick Leave" v-model="editForm.sl" type="number" />
-          <FormInput label="OT Credits" v-model="editForm.ot" type="number" />
-          <FormInput label="Service Credits" v-model="editForm.service" type="number" />
+        <form @submit.prevent="submitEdit" id="edit-form">
+          <p class="text-xs font-medium text-gray-600 mb-3">Earned Leave Credits</p>
+          <div class="grid grid-cols-2 gap-3 mb-4">
+            <FormInput label="Vacation Leave (VL)" v-model="editForm.vl" type="number" :error="editForm.errors.vl" />
+            <FormInput label="Sick Leave (SL)" v-model="editForm.sl" type="number" :error="editForm.errors.sl" />
+          </div>
+
+          <p class="text-xs font-medium text-gray-600 mb-3">Special Leave Credits</p>
+          <div class="grid grid-cols-3 gap-3 mb-4">
+            <FormInput label="Maternity (105 days)" v-model="editForm.maternity" type="number" :error="editForm.errors.maternity" />
+            <FormInput label="Paternity (10 days)" v-model="editForm.paternity" type="number" :error="editForm.errors.paternity" />
+            <FormInput label="SPL (3 days)" v-model="editForm.spl" type="number" :error="editForm.errors.spl" />
+            <FormInput label="Forced Leave (5 days)" v-model="editForm.forced" type="number" :error="editForm.errors.forced" />
+            <FormInput label="Wellness (5 days)" v-model="editForm.wellness" type="number" :error="editForm.errors.wellness" />
+          </div>
+
+          <p class="text-xs font-medium text-gray-600 mb-3">Other Credits</p>
+          <div class="grid grid-cols-2 gap-3">
+            <FormInput label="OT Credits" v-model="editForm.ot" type="number" :error="editForm.errors.ot" />
+            <FormInput label="Service Credits" v-model="editForm.service" type="number" :error="editForm.errors.service" />
+          </div>
         </form>
       </template>
       <template #footer>

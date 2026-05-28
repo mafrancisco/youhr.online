@@ -40,6 +40,7 @@ class LeaveController extends Controller
         return Inertia::render('Leaves/Index', [
             'leaveTypes' => LeaveType::orderBy('id')->get(['id', 'leave_type', 'acronym']),
             'leaves'     => $leaves,
+            'credits'    => $this->getEmployeeCredits($employee->badgeID),
         ]);
     }
 
@@ -59,6 +60,24 @@ class LeaveController extends Controller
         ]);
 
         $employee = Employee::where('email', $request->user()->email)->firstOrFail();
+
+        // Check if employee has leave credit baseline data
+        $credit = \App\Models\LeaveCredit::where('badgeID', $employee->badgeID)->first();
+        if (!$credit) {
+            return back()->withErrors([
+                'leave_type' => 'You have no leave credits record. Please contact HR to set up your leave credits before filing.',
+            ]);
+        }
+
+        // Determine which credit pool to check based on leave type name
+        $leaveType = LeaveType::find($request->leave_type);
+        $typeName  = strtolower($leaveType->leave_type ?? '');
+        $daysRequested = count($request->dates);
+
+        $creditCheck = $this->checkLeaveCredits($typeName, $credit, $daysRequested);
+        if ($creditCheck !== true) {
+            return back()->withErrors(['leave_type' => $creditCheck]);
+        }
 
         $details = trim(implode(' ', array_filter([
             $request->destination, $request->location, $request->sickleave,
@@ -91,6 +110,53 @@ class LeaveController extends Controller
         return back()->with('success', 'Leave filed. Control No: ' . $controlno);
     }
 
+    /**
+     * Check if the employee has sufficient leave credits for the requested leave type.
+     *
+     * @return true|string True if sufficient, or error message string
+     */
+    private function checkLeaveCredits(string $typeName, \App\Models\LeaveCredit $credit, int $daysRequested): true|string
+    {
+        // Map leave type names to credit fields and limits
+        // VL and SL use the dynamic balance from lcredits table
+        // Others have fixed entitlements per year
+        $mapping = [
+            'vacation leave'            => ['field' => 'vl',        'available' => (float) $credit->vl],
+            'sick leave'                => ['field' => 'sl',        'available' => (float) $credit->sl],
+            'maternity leave'           => ['field' => 'maternity', 'available' => (float) $credit->maternity],
+            'paternity leave'           => ['field' => 'paternity', 'available' => (float) $credit->paternity],
+            'special privilege leave'   => ['field' => 'spl',       'available' => (float) $credit->spl],
+            'forced leave'              => ['field' => 'forced',    'available' => (float) $credit->forced],
+            'mandatory/forced leave'    => ['field' => 'forced',    'available' => (float) $credit->forced],
+            'wellness leave'            => ['field' => 'wellness',  'available' => (float) $credit->wellness],
+        ];
+
+        // Find matching credit pool
+        $matched = null;
+        foreach ($mapping as $key => $config) {
+            if (str_contains($typeName, $key) || $key === $typeName) {
+                $matched = $config;
+                break;
+            }
+        }
+
+        // If no specific mapping found, allow filing (other leave types like study leave, VAWC, etc.)
+        if (!$matched) {
+            return true;
+        }
+
+        if ($daysRequested > $matched['available']) {
+            $label = ucwords($matched['field'] === 'vl' ? 'Vacation Leave' :
+                    ($matched['field'] === 'sl' ? 'Sick Leave' :
+                    ($matched['field'] === 'spl' ? 'Special Privilege Leave' :
+                    ucfirst($matched['field']) . ' Leave')));
+
+            return "Insufficient {$label} credits. Available: {$matched['available']} day(s), Requested: {$daysRequested} day(s).";
+        }
+
+        return true;
+    }
+
     public function destroy(Request $request, Leave $leave)
     {
         $employee = Employee::where('email', $request->user()->email)->firstOrFail();
@@ -105,17 +171,34 @@ class LeaveController extends Controller
             ->where('status', 'Pending')
             ->orderByDesc('id')
             ->get()
-            ->map(fn($l) => [
-                'id'         => $l->id,
-                'controlno'  => $l->controlno,
-                'empName'    => $l->employee?->empName,
-                'date_filed' => $l->date_filed,
-                'type_name'  => $l->type?->full_name,
-                'dates'      => $l->date_start,
-                'noofdays'   => $l->noofdays,
-                'details'    => $l->leave_details,
-                'status'     => $l->status,
-            ]);
+            ->map(function ($l) {
+                // Get employee's leave credit balance
+                $credit = \App\Models\LeaveCredit::where('badgeID', $l->badgeID)->first();
+
+                return [
+                    'id'         => $l->id,
+                    'controlno'  => $l->controlno,
+                    'empName'    => $l->employee?->empName,
+                    'badgeID'    => $l->badgeID,
+                    'date_filed' => $l->date_filed,
+                    'type_name'  => $l->type?->full_name,
+                    'dates'      => $l->date_start,
+                    'noofdays'   => $l->noofdays,
+                    'details'    => $l->leave_details,
+                    'status'     => $l->status,
+                    'credits'    => $credit ? [
+                        'vl'        => (float) $credit->vl,
+                        'sl'        => (float) $credit->sl,
+                        'maternity' => (float) $credit->maternity,
+                        'paternity' => (float) $credit->paternity,
+                        'spl'       => (float) $credit->spl,
+                        'forced'    => (float) $credit->forced,
+                        'wellness'  => (float) $credit->wellness,
+                        'ot'        => (float) $credit->ot,
+                        'service'   => (float) $credit->service,
+                    ] : null,
+                ];
+            });
 
         return Inertia::render('Leaves/Admin', ['leaves' => $leaves]);
     }
@@ -123,11 +206,16 @@ class LeaveController extends Controller
     public function update(Request $request, Leave $leave)
     {
         $request->validate([
-            'status'          => ['required', 'in:Pending,Approved,Cancelled'],
-            'credits_vl'      => ['nullable', 'numeric', 'min:0'],
-            'credits_sl'      => ['nullable', 'numeric', 'min:0'],
-            'ot_credits'      => ['nullable', 'numeric', 'min:0'],
-            'service_credits' => ['nullable', 'numeric', 'min:0'],
+            'status'             => ['required', 'in:Pending,Approved,Cancelled'],
+            'credits_vl'         => ['nullable', 'numeric', 'min:0'],
+            'credits_sl'         => ['nullable', 'numeric', 'min:0'],
+            'credits_maternity'  => ['nullable', 'numeric', 'min:0'],
+            'credits_paternity'  => ['nullable', 'numeric', 'min:0'],
+            'credits_spl'        => ['nullable', 'numeric', 'min:0'],
+            'credits_forced'     => ['nullable', 'numeric', 'min:0'],
+            'credits_wellness'   => ['nullable', 'numeric', 'min:0'],
+            'ot_credits'         => ['nullable', 'numeric', 'min:0'],
+            'service_credits'    => ['nullable', 'numeric', 'min:0'],
         ]);
 
         $leave->update([
@@ -139,12 +227,38 @@ class LeaveController extends Controller
             'dateUpdated'     => now()->toDateString(),
         ]);
 
-        // When approved, mark attendance_clean records with 'L' for leave dates
+        // When approved, deduct from employee's leave credits
         if ($request->status === 'Approved') {
+            $this->deductLeaveCredits($leave->badgeID, $request);
             $this->markLeaveInAttendance($leave);
         }
 
         return back()->with('success', 'Leave updated.');
+    }
+
+    /**
+     * Deduct the specified credits from the employee's leave credit balance.
+     */
+    private function deductLeaveCredits(string $badgeID, Request $request): void
+    {
+        $credit = \App\Models\LeaveCredit::where('badgeID', $badgeID)->first();
+        if (!$credit) return;
+
+        $deductions = [];
+        if ($request->credits_vl > 0)        $deductions['vl']        = max(0, $credit->vl - $request->credits_vl);
+        if ($request->credits_sl > 0)        $deductions['sl']        = max(0, $credit->sl - $request->credits_sl);
+        if ($request->credits_maternity > 0) $deductions['maternity'] = max(0, $credit->maternity - $request->credits_maternity);
+        if ($request->credits_paternity > 0) $deductions['paternity'] = max(0, $credit->paternity - $request->credits_paternity);
+        if ($request->credits_spl > 0)       $deductions['spl']       = max(0, $credit->spl - $request->credits_spl);
+        if ($request->credits_forced > 0)    $deductions['forced']    = max(0, $credit->forced - $request->credits_forced);
+        if ($request->credits_wellness > 0)  $deductions['wellness']  = max(0, $credit->wellness - $request->credits_wellness);
+        if ($request->ot_credits > 0)        $deductions['ot']        = max(0, $credit->ot - $request->ot_credits);
+        if ($request->service_credits > 0)   $deductions['service']   = max(0, $credit->service - $request->service_credits);
+
+        if (!empty($deductions)) {
+            $deductions['dateupdated'] = now()->toDateString();
+            $credit->update($deductions);
+        }
     }
 
     /**
@@ -188,6 +302,24 @@ class LeaveController extends Controller
             }
         }
         return $dates;
+    }
+
+    private function getEmployeeCredits(string $badgeID): ?array
+    {
+        $credit = \App\Models\LeaveCredit::where('badgeID', $badgeID)->first();
+        if (!$credit) return null;
+
+        return [
+            'vl'        => (float) $credit->vl,
+            'sl'        => (float) $credit->sl,
+            'maternity' => (float) $credit->maternity,
+            'paternity' => (float) $credit->paternity,
+            'spl'       => (float) $credit->spl,
+            'forced'    => (float) $credit->forced,
+            'wellness'  => (float) $credit->wellness,
+            'ot'        => (float) $credit->ot,
+            'service'   => (float) $credit->service,
+        ];
     }
 
     public function downloadForm(Leave $leave)

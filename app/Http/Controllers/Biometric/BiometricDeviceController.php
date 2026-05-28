@@ -171,6 +171,28 @@ class BiometricDeviceController extends Controller
     }
 
     /**
+     * Process synced biometric logs into attendance_clean using Time Detection Rules.
+     */
+    public function processLogs(Request $request)
+    {
+        $request->validate([
+            'start_date' => ['required', 'date_format:Y-m-d'],
+            'end_date'   => ['required', 'date_format:Y-m-d', 'after_or_equal:start_date'],
+        ]);
+
+        $processor = new \App\Services\BiometricLogProcessorService();
+        $result = $processor->process($request->start_date, $request->end_date);
+
+        if ($result['processed'] > 0) {
+            // Run DTR computation after processing
+            $computer = new \App\Services\AttendanceComputationService();
+            $computer->compute($request->start_date, $request->end_date);
+        }
+
+        return back()->with('success', $result['message'] . ($result['processed'] > 0 ? ' DTR computed.' : ''));
+    }
+
+    /**
      * Map a biometric device user to an employee.
      */
     public function mapUser(Request $request, BiometricDeviceUser $deviceUser)

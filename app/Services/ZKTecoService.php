@@ -101,7 +101,7 @@ class ZKTecoService
                 return $this->failHistory($history, 'Could not connect to device.');
             }
 
-            $users = $this->zk->getUser();
+            $users = $this->zk->getUsers();
             $this->disconnect();
 
             if (!is_array($users)) {
@@ -113,10 +113,10 @@ class ZKTecoService
             $skipped = 0;
 
             foreach ($users as $user) {
-                $uid    = (string) ($user['uid'] ?? $user[0] ?? '');
-                $userId = (string) ($user['userid'] ?? $user['user_id'] ?? $user[1] ?? '');
-                $name   = (string) ($user['name'] ?? $user[2] ?? '');
-                $role   = (int) ($user['role'] ?? $user[3] ?? 0);
+                $uid    = (string) ($user['uid'] ?? '');
+                $userId = (string) ($user['user_id'] ?? '');
+                $name   = trim($user['name'] ?? '');
+                $role   = (int) ($user['role'] ?? 0);
 
                 if (empty($uid)) {
                     $skipped++;
@@ -167,7 +167,7 @@ class ZKTecoService
                 return $this->failHistory($history, 'Could not connect to device.');
             }
 
-            $logs = $this->zk->getAttendance();
+            $logs = $this->zk->getAttendances();
             $this->disconnect();
 
             if (!is_array($logs)) {
@@ -179,10 +179,11 @@ class ZKTecoService
             $skipped = 0;
 
             foreach ($logs as $log) {
-                $userId    = (string) ($log['id'] ?? $log['uid'] ?? $log[0] ?? '');
-                $timestamp = $log['timestamp'] ?? $log[3] ?? null;
-                $punchType = (int) ($log['type'] ?? $log['state'] ?? $log[4] ?? 0);
-                $verifyType = (int) ($log['verify'] ?? $log[2] ?? 0);
+                // Library returns: uid, user_id, state, record_time, type, device_ip
+                $userId    = (string) ($log['user_id'] ?? '');
+                $timestamp = $log['record_time'] ?? null;
+                $state     = (int) ($log['state'] ?? 0);
+                $type      = (int) ($log['type'] ?? 0);
 
                 if (empty($userId) || empty($timestamp)) {
                     $skipped++;
@@ -203,10 +204,10 @@ class ZKTecoService
                         'device_id'      => $device->id,
                         'device_user_id' => $userId,
                         'timestamp'      => $ts,
-                        'punch_type'     => $punchType,
+                        'punch_type'     => $state,
                     ],
                     [
-                        'verify_type'  => $verifyType,
+                        'verify_type'  => $type,
                         'is_processed' => false,
                     ]
                 );

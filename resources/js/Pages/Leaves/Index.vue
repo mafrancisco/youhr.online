@@ -9,6 +9,7 @@ import PrimaryButton from '@/Components/PrimaryButton.vue'
 const props = defineProps({
   leaveTypes: Array,
   leaves:     Array,
+  credits:    Object,
 })
 
 // File Leave Modal
@@ -143,6 +144,52 @@ const typeCode = (acronym) => selectedType.value?.acronym === acronym
               <option v-for="lt in leaveTypes" :key="lt.id" :value="lt.id">{{ lt.leave_type }}</option>
             </select>
             <p v-if="form.errors.leave_type" class="text-xs text-red-500 mt-1">{{ form.errors.leave_type }}</p>
+          </div>
+
+          <!-- Leave Credit Balances -->
+          <div v-if="credits" class="border border-blue-200 bg-blue-50 rounded-lg p-3">
+            <p class="text-xs font-semibold text-blue-800 mb-2">Your Leave Credit Balances</p>
+            <div class="grid grid-cols-3 gap-2 text-xs">
+              <div class="bg-white rounded px-2 py-1.5 border">
+                <span class="text-gray-500">VL:</span>
+                <span class="font-bold ml-1">{{ credits.vl }}</span>
+              </div>
+              <div class="bg-white rounded px-2 py-1.5 border">
+                <span class="text-gray-500">SL:</span>
+                <span class="font-bold ml-1">{{ credits.sl }}</span>
+              </div>
+              <div class="bg-white rounded px-2 py-1.5 border">
+                <span class="text-gray-500">Maternity:</span>
+                <span class="font-bold ml-1">{{ credits.maternity }}</span>
+              </div>
+              <div class="bg-white rounded px-2 py-1.5 border">
+                <span class="text-gray-500">Paternity:</span>
+                <span class="font-bold ml-1">{{ credits.paternity }}</span>
+              </div>
+              <div class="bg-white rounded px-2 py-1.5 border">
+                <span class="text-gray-500">SPL:</span>
+                <span class="font-bold ml-1">{{ credits.spl }}</span>
+              </div>
+              <div class="bg-white rounded px-2 py-1.5 border">
+                <span class="text-gray-500">Forced:</span>
+                <span class="font-bold ml-1">{{ credits.forced }}</span>
+              </div>
+              <div class="bg-white rounded px-2 py-1.5 border">
+                <span class="text-gray-500">Wellness:</span>
+                <span class="font-bold ml-1">{{ credits.wellness }}</span>
+              </div>
+              <div class="bg-white rounded px-2 py-1.5 border">
+                <span class="text-gray-500">OT:</span>
+                <span class="font-bold ml-1">{{ credits.ot }}</span>
+              </div>
+              <div class="bg-white rounded px-2 py-1.5 border">
+                <span class="text-gray-500">Service:</span>
+                <span class="font-bold ml-1">{{ credits.service }}</span>
+              </div>
+            </div>
+          </div>
+          <div v-else class="border border-amber-200 bg-amber-50 rounded-lg p-3">
+            <p class="text-xs text-amber-800 font-medium">⚠ No leave credit record found. Contact HR to set up your leave credits.</p>
           </div>
 
           <!-- Dates -->

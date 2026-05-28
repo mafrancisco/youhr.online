@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed } from 'vue'
+import { ref } from 'vue'
 import { useForm, router } from '@inertiajs/vue3'
 import AppLayout from '@/Layouts/AppLayout.vue'
 import FlashMessage from '@/Components/FlashMessage.vue'
@@ -36,12 +36,12 @@ function downloadPDF() {
   window.location.href = `/dtr/download?start_date=${start}&end_date=${end}`
 }
 
-// Request correction modal
-const showRequestModal = ref(false)
-const requestDay       = ref(null)
-const requestForm      = useForm({
-  BadgeNumber: props.employee?.badgeID,
+// Edit time log modal
+const showEditModal = ref(false)
+const editDay       = ref(null)
+const editForm      = useForm({
   AttDate:     '',
+  attID:       null,
   StartTime1:  '',
   StartTime2:  '',
   StartTime3:  '',
@@ -49,22 +49,33 @@ const requestForm      = useForm({
   remarks:     '',
 })
 
-function openRequest(day) {
-  requestDay.value       = day
-  requestForm.AttDate    = day.attDate
-  requestForm.StartTime1 = day.StartTime1 || ''
-  requestForm.StartTime2 = day.StartTime2 || ''
-  requestForm.StartTime3 = day.StartTime3 || ''
-  requestForm.StartTime4 = day.StartTime4 || ''
-  requestForm.remarks    = day.remarks || ''
-  showRequestModal.value = true
+function openEdit(day) {
+  editDay.value       = day
+  editForm.AttDate    = day.attDate
+  editForm.attID      = null
+  editForm.StartTime1 = ''
+  editForm.StartTime2 = ''
+  editForm.StartTime3 = ''
+  editForm.StartTime4 = ''
+  editForm.remarks    = day.remarks || ''
+  showEditModal.value = true
 }
 
-function submitRequest() {
-  requestForm.post('/dtr/requests', {
+function isValidTime(t) {
+  if (!t || t === '') return false
+  return /^(0?[0-9]|1[0-9]|2[0-3]):[0-5][0-9]$/.test(t)
+}
+
+function hasExistingLog(field) {
+  if (!editDay.value) return false
+  return isValidTime(editDay.value[field])
+}
+
+function submitEdit() {
+  editForm.post('/dtr/requests', {
     onSuccess: () => {
-      showRequestModal.value = false
-      requestForm.reset()
+      showEditModal.value = false
+      editForm.reset()
     },
   })
 }
@@ -84,7 +95,16 @@ function formatMins(mins) {
   return h > 0 ? `${h}h ${m}m` : `${m}m`
 }
 
-const isWeekend = (dayName) => ['Sat', 'Sun'].includes(dayName)
+function isWeekend(dayName) {
+  return ['Sat', 'Sun'].includes(dayName)
+}
+
+// Check if a time field was manually edited (from request record)
+function isEdited(day, field) {
+  if (!day.request) return false
+  const logMap = { StartTime1: 'log1', StartTime2: 'log2', StartTime3: 'log3', StartTime4: 'log4' }
+  return day.request[logMap[field]] === '1'
+}
 </script>
 
 <template>
@@ -119,6 +139,12 @@ const isWeekend = (dayName) => ['Sat', 'Sun'].includes(dayName)
         </div>
       </div>
 
+      <!-- Legend -->
+      <div class="flex items-center gap-4 text-xs text-gray-500">
+        <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-red-500"></span> Manually edited</span>
+        <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-gray-400"></span> Biometric recorded</span>
+      </div>
+
       <!-- DTR Table -->
       <div class="bg-white rounded-xl shadow overflow-x-auto">
         <table class="min-w-full text-sm">
@@ -144,10 +170,18 @@ const isWeekend = (dayName) => ['Sat', 'Sun'].includes(dayName)
               <td class="px-3 py-2 font-medium text-gray-800 whitespace-nowrap">
                 {{ new Date(day.date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', weekday: 'short' }) }}
               </td>
-              <td class="px-3 py-2 text-center text-xs">{{ formatTime(day.StartTime1) }}</td>
-              <td class="px-3 py-2 text-center text-xs">{{ formatTime(day.StartTime2) }}</td>
-              <td class="px-3 py-2 text-center text-xs">{{ formatTime(day.StartTime3) }}</td>
-              <td class="px-3 py-2 text-center text-xs">{{ formatTime(day.StartTime4) }}</td>
+              <td class="px-3 py-2 text-center text-xs" :class="isEdited(day, 'StartTime1') ? 'text-red-600 font-medium' : ''">
+                {{ formatTime(day.StartTime1) }}
+              </td>
+              <td class="px-3 py-2 text-center text-xs" :class="isEdited(day, 'StartTime2') ? 'text-red-600 font-medium' : ''">
+                {{ formatTime(day.StartTime2) }}
+              </td>
+              <td class="px-3 py-2 text-center text-xs" :class="isEdited(day, 'StartTime3') ? 'text-red-600 font-medium' : ''">
+                {{ formatTime(day.StartTime3) }}
+              </td>
+              <td class="px-3 py-2 text-center text-xs" :class="isEdited(day, 'StartTime4') ? 'text-red-600 font-medium' : ''">
+                {{ formatTime(day.StartTime4) }}
+              </td>
               <td class="px-3 py-2 text-center text-xs text-purple-600">{{ day.OTIn }}</td>
               <td class="px-3 py-2 text-center text-xs text-purple-600">{{ day.OTOut }}</td>
               <td class="px-3 py-2 text-center text-xs text-red-600">{{ formatMins(day.Tardiness) }}</td>
@@ -155,10 +189,15 @@ const isWeekend = (dayName) => ['Sat', 'Sun'].includes(dayName)
               <td class="px-3 py-2 text-center text-xs text-green-600">{{ formatMins(day.OT) }}</td>
               <td class="px-3 py-2 text-center text-xs">{{ day.remarks }}</td>
               <td v-if="!submitted" class="px-3 py-2 text-center">
-                <button v-if="!isWeekend(day.dayName)" @click="openRequest(day)"
-                  class="text-xs text-blue-600 hover:underline">
-                  Request
-                </button>
+                <template v-if="!isWeekend(day.dayName)">
+                  <button v-if="!day.editBlocked" @click="openEdit(day)"
+                    class="text-xs text-blue-600 hover:underline">
+                    Edit
+                  </button>
+                  <span v-else class="text-xs text-gray-400 cursor-not-allowed" :title="day.editBlocked">
+                    🔒
+                  </span>
+                </template>
               </td>
             </tr>
           </tbody>
@@ -166,46 +205,57 @@ const isWeekend = (dayName) => ['Sat', 'Sun'].includes(dayName)
       </div>
     </div>
 
-    <!-- Correction Request Modal -->
-    <Modal :show="showRequestModal" @close="showRequestModal = false">
-      <template #header>Request Correction — {{ requestDay?.attDate }}</template>
+    <!-- Edit Time Log Modal -->
+    <Modal :show="showEditModal" @close="showEditModal = false">
+      <template #header>Edit Time Log — {{ editDay?.attDate }}</template>
       <template #body>
-        <form @submit.prevent="submitRequest" class="space-y-3">
+        <form @submit.prevent="submitEdit" class="space-y-3">
+          <p class="text-xs text-gray-500 mb-2">
+            Only blank time entries can be edited. Fields with biometric data are locked.
+          </p>
           <div class="grid grid-cols-2 gap-3">
             <div>
               <label class="block text-xs font-medium text-gray-700 mb-1">AM Time In</label>
-              <input v-model="requestForm.StartTime1" type="time"
-                class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              <input v-model="editForm.StartTime1" type="time" :disabled="hasExistingLog('StartTime1')"
+                class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed" />
+              <p v-if="hasExistingLog('StartTime1')" class="text-xs text-gray-400 mt-0.5">🔒 {{ editDay?.StartTime1 }}</p>
+              <p v-if="editForm.errors.StartTime1" class="text-xs text-red-500 mt-0.5">{{ editForm.errors.StartTime1 }}</p>
             </div>
             <div>
               <label class="block text-xs font-medium text-gray-700 mb-1">AM Time Out</label>
-              <input v-model="requestForm.StartTime2" type="time"
-                class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              <input v-model="editForm.StartTime2" type="time" :disabled="hasExistingLog('StartTime2')"
+                class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed" />
+              <p v-if="hasExistingLog('StartTime2')" class="text-xs text-gray-400 mt-0.5">🔒 {{ editDay?.StartTime2 }}</p>
+              <p v-if="editForm.errors.StartTime2" class="text-xs text-red-500 mt-0.5">{{ editForm.errors.StartTime2 }}</p>
             </div>
             <div>
               <label class="block text-xs font-medium text-gray-700 mb-1">PM Time In</label>
-              <input v-model="requestForm.StartTime3" type="time"
-                class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              <input v-model="editForm.StartTime3" type="time" :disabled="hasExistingLog('StartTime3')"
+                class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed" />
+              <p v-if="hasExistingLog('StartTime3')" class="text-xs text-gray-400 mt-0.5">🔒 {{ editDay?.StartTime3 }}</p>
+              <p v-if="editForm.errors.StartTime3" class="text-xs text-red-500 mt-0.5">{{ editForm.errors.StartTime3 }}</p>
             </div>
             <div>
               <label class="block text-xs font-medium text-gray-700 mb-1">PM Time Out</label>
-              <input v-model="requestForm.StartTime4" type="time"
-                class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              <input v-model="editForm.StartTime4" type="time" :disabled="hasExistingLog('StartTime4')"
+                class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed" />
+              <p v-if="hasExistingLog('StartTime4')" class="text-xs text-gray-400 mt-0.5">🔒 {{ editDay?.StartTime4 }}</p>
+              <p v-if="editForm.errors.StartTime4" class="text-xs text-red-500 mt-0.5">{{ editForm.errors.StartTime4 }}</p>
             </div>
           </div>
           <div>
-            <label class="block text-xs font-medium text-gray-700 mb-1">Remarks / Reason</label>
-            <textarea v-model="requestForm.remarks" rows="2"
+            <label class="block text-xs font-medium text-gray-700 mb-1">Remarks</label>
+            <textarea v-model="editForm.remarks" rows="2"
               class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="Reason for correction request"></textarea>
+              placeholder="Reason for edit (e.g. forgot to log, brownout)"></textarea>
           </div>
-          <div v-if="requestForm.errors.StartTime1 || requestForm.errors.AttDate" class="text-xs text-red-600">
-            {{ requestForm.errors.StartTime1 || requestForm.errors.AttDate }}
+          <div v-if="editForm.errors.AttDate" class="text-xs text-red-600">
+            {{ editForm.errors.AttDate }}
           </div>
           <div class="flex justify-end gap-2 pt-2">
-            <button type="button" @click="showRequestModal = false"
+            <button type="button" @click="showEditModal = false"
               class="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50">Cancel</button>
-            <PrimaryButton type="submit" :loading="requestForm.processing">Submit Request</PrimaryButton>
+            <PrimaryButton type="submit" :loading="editForm.processing">Save Changes</PrimaryButton>
           </div>
         </form>
       </template>

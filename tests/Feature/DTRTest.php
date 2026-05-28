@@ -95,10 +95,18 @@ class DTRTest extends TestCase
         $response->assertSessionHas('error');
     }
 
-    public function test_employee_can_submit_adjustment_request(): void
+    public function test_employee_can_edit_time_log(): void
     {
         $user = $this->createEmployeeUser();
         $employee = $this->createEmployee(['email' => $user->email]);
+
+        // Create an attendance_clean record with blank times (no biometric data)
+        $this->createAttendanceRecord($employee->badgeID, '05/05/2025', [
+            'StartTime1' => '',
+            'StartTime2' => '',
+            'StartTime3' => '',
+            'StartTime4' => '',
+        ]);
 
         $response = $this->actingAs($user)->post('/dtr/requests', [
             'AttDate'    => '05/05/2025',
@@ -112,9 +120,19 @@ class DTRTest extends TestCase
         $response->assertRedirect();
         $response->assertSessionHas('success');
 
+        // Verify attendance_clean was directly updated
+        $this->assertDatabaseHas('attendance_clean', [
+            'BadgeNumber' => $employee->badgeID,
+            'AttDate'     => '05/05/2025',
+            'StartTime1'  => '08:00',
+            'StartTime4'  => '17:00',
+        ]);
+
+        // Verify edit was tracked in request table
         $this->assertDatabaseHas('request', [
             'BadgeNumber' => $employee->badgeID,
             'AttDate'     => '05/05/2025',
+            'log1'        => '1',
             'remarks'     => 'Forgot to log in',
         ]);
     }

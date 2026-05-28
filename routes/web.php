@@ -18,6 +18,7 @@ use App\Http\Controllers\Admin\DivisionController;
 use App\Http\Controllers\Admin\EmployeeStatusController;
 use App\Http\Controllers\Admin\LeaveTypeController;
 use App\Http\Controllers\Admin\SettingController;
+use App\Http\Controllers\Admin\TimeDetectionController;
 use App\Http\Controllers\Biometric\BiometricDeviceController;
 use App\Http\Controllers\Users\UserController;
 use Illuminate\Support\Facades\Route;
@@ -100,6 +101,9 @@ Route::middleware('auth')->group(function () {
         Route::put('/admin/leave-types/{leaveType}',        [LeaveTypeController::class, 'update'])->name('leave-types.update');
         Route::delete('/admin/leave-types/{leaveType}',     [LeaveTypeController::class, 'destroy'])->name('leave-types.destroy');
 
+        Route::get('/admin/time-detection',                 [TimeDetectionController::class, 'index'])->name('time-detection.index');
+        Route::put('/admin/time-detection/{setting}',       [TimeDetectionController::class, 'update'])->name('time-detection.update');
+
         // Biometric Device Management
         Route::get('/biometric/devices',                        [BiometricDeviceController::class, 'index'])->name('biometric.devices');
         Route::post('/biometric/devices',                       [BiometricDeviceController::class, 'store'])->name('biometric.devices.store');
@@ -109,6 +113,7 @@ Route::middleware('auth')->group(function () {
         Route::get('/biometric/devices/{device}',               [BiometricDeviceController::class, 'show'])->name('biometric.devices.show');
         Route::post('/biometric/devices/{device}/sync-logs',    [BiometricDeviceController::class, 'syncLogs'])->name('biometric.devices.sync-logs');
         Route::post('/biometric/devices/{device}/sync-users',   [BiometricDeviceController::class, 'syncUsers'])->name('biometric.devices.sync-users');
+        Route::post('/biometric/process-logs',                  [BiometricDeviceController::class, 'processLogs'])->name('biometric.process-logs');
         Route::post('/biometric/users/{deviceUser}/map',        [BiometricDeviceController::class, 'mapUser'])->name('biometric.users.map');
         Route::delete('/biometric/users/{deviceUser}/map',      [BiometricDeviceController::class, 'unmapUser'])->name('biometric.users.unmap');
         Route::get('/biometric/devices/{device}/history',       [BiometricDeviceController::class, 'syncHistory'])->name('biometric.devices.history');

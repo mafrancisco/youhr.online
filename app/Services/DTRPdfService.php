@@ -324,18 +324,43 @@ class DTRPdfService
                 $otcom = '';
             }
 
+            // Gate pass: show type abbreviation in RED in AM Out / PM In columns if blank
+            if (!empty($dayGatePasses)) {
+                foreach ($dayGatePasses as $gp) {
+                    $typeAbbr = match ($gp->gatepass_type) {
+                        'Official Business' => 'OB',
+                        'Official Time'     => 'OT-GP',
+                        'Personal'          => 'P-GP',
+                        default             => 'GP',
+                    };
+
+                    // If AM Out (times[1]) is blank or not a real time, show GP label in red
+                    if (empty($times[1]) || !preg_match('/\d{1,2}:\d{2}/', $times[1])) {
+                        $times[1] = '<font color="red">' . $typeAbbr . '</font>';
+                    }
+                    // If PM In (times[2]) is blank or not a real time, show GP label in red
+                    if (empty($times[2]) || !preg_match('/\d{1,2}:\d{2}/', $times[2])) {
+                        $times[2] = '<font color="red">' . $typeAbbr . '</font>';
+                    }
+                }
+            }
+
+            // Render times[1] and times[2] — they may already contain <font> tags from GP
+            $col1Html = str_contains($times[1], '<font') ? $times[1] : '<font color="' . $colors[1] . '">' . $times[1] . '</font>';
+            $col2Html = str_contains($times[2], '<font') ? $times[2] : '<font color="' . $colors[2] . '">' . $times[2] . '</font>';
+
             $html .= '<tr>
                 <td>' . $dayDisplay . '</td>
                 <td><font color="' . $colors[0] . '">' . $times[0] . '</font></td>
-                <td><font color="' . $colors[1] . '">' . $times[1] . '</font></td>
-                <td><font color="' . $colors[2] . '">' . $times[2] . '</font></td>
+                <td>' . $col1Html . '</td>
+                <td>' . $col2Html . '</td>
                 <td><font color="' . $colors[3] . '">' . $times[3] . '</font></td>
                 <td>' . ($row->OTIn ?? '') . '</td>
                 <td>' . ($row->OTOut ?? '') . '</td>
                 <td>' . $hr . '</td>
                 <td>' . $min . '</td>
                 <td><font size="1">' . $otcom . '</font></td>
-                <td>' . $remarks . '</td>
+                <td><font size="1">' . $remarks . '</font></td>
             </tr>';
         }
 

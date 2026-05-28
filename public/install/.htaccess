@@ -1,0 +1,4 @@
+# Prevent Laravel's .htaccess from intercepting installer requests
+<IfModule mod_rewrite.c>
+    RewriteEngine Off
+</IfModule>
