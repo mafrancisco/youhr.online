@@ -14,13 +14,23 @@ const startDate     = ref(props.start_date)
 const endDate       = ref(props.end_date)
 const selected      = ref([])
 const bulkEmpStatus = ref('1')
+const search        = ref('')
+
+const filteredEmployees = computed(() => {
+  const q = search.value.trim().toLowerCase()
+  if (!q) return props.employees
+  return props.employees.filter(e =>
+    e.empName.toLowerCase().includes(q) ||
+    e.badgeID.toLowerCase().includes(q)
+  )
+})
 
 const allChecked = computed(() =>
-  props.employees.length > 0 && selected.value.length === props.employees.length
+  filteredEmployees.value.length > 0 && selected.value.length === filteredEmployees.value.length
 )
 
 function toggleAll() {
-  selected.value = allChecked.value ? [] : props.employees.map(e => e.badgeID)
+  selected.value = allChecked.value ? [] : filteredEmployees.value.map(e => e.badgeID)
 }
 
 function downloadIndividual(badgeID) {
@@ -76,6 +86,13 @@ function downloadBulk() {
     </div>
 
     <div class="bg-white rounded-xl shadow overflow-hidden">
+      <!-- Search box -->
+      <div class="px-4 py-3 border-b bg-gray-50">
+        <input v-model="search" type="search" placeholder="Search by name or badge ID..."
+          class="w-full max-w-sm border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
+        <span class="text-xs text-gray-400 ml-3">{{ filteredEmployees.length }} of {{ employees.length }} employees</span>
+      </div>
+
       <table class="w-full text-sm">
         <thead class="bg-gray-50 text-gray-500 text-xs uppercase tracking-wide">
           <tr>
@@ -89,7 +106,7 @@ function downloadBulk() {
           </tr>
         </thead>
         <tbody class="divide-y divide-gray-100">
-          <tr v-for="emp in employees" :key="emp.badgeID" class="hover:bg-gray-50">
+          <tr v-for="emp in filteredEmployees" :key="emp.badgeID" class="hover:bg-gray-50">
             <td class="px-4 py-3">
               <input type="checkbox" :value="emp.badgeID" v-model="selected"
                 class="rounded border-gray-300 text-blue-600 focus:ring-blue-400" />
@@ -103,8 +120,10 @@ function downloadBulk() {
               </button>
             </td>
           </tr>
-          <tr v-if="!employees.length">
-            <td colspan="4" class="px-4 py-8 text-center text-gray-400">No active employees.</td>
+          <tr v-if="!filteredEmployees.length">
+            <td colspan="4" class="px-4 py-8 text-center text-gray-400">
+              {{ search ? 'No employees match your search.' : 'No active employees.' }}
+            </td>
           </tr>
         </tbody>
       </table>
