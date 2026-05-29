@@ -50,10 +50,14 @@ function unmap(user) {
 
 // ─── Sync Actions ────────────────────────────────────────────────────────────
 const syncing = ref(false)
+const syncForm = useForm({
+  start_date: new Date().toISOString().slice(0, 8) + '01',
+  end_date:   new Date().toISOString().slice(0, 10),
+})
 
 function syncLogs() {
   syncing.value = true
-  router.post(`/biometric/devices/${props.device.id}/sync-logs`, {}, {
+  syncForm.post(`/biometric/devices/${props.device.id}/sync-logs`, {
     onFinish: () => { syncing.value = false },
   })
 }
@@ -116,12 +120,22 @@ const historyColumns = [
             </span>
           </div>
         </div>
-        <div class="flex gap-2">
+        <div class="flex flex-wrap items-end gap-3">
+          <div>
+            <label class="block text-xs text-gray-500 mb-1">Start Date</label>
+            <input v-model="syncForm.start_date" type="date"
+              class="border border-gray-300 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
+          </div>
+          <div>
+            <label class="block text-xs text-gray-500 mb-1">End Date</label>
+            <input v-model="syncForm.end_date" type="date"
+              class="border border-gray-300 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
+          </div>
           <PrimaryButton variant="ghost" @click="syncUsers" :loading="syncing">
             Sync Users
           </PrimaryButton>
           <PrimaryButton @click="syncLogs" :loading="syncing">
-            Sync Logs
+            Sync & Process Logs
           </PrimaryButton>
         </div>
       </div>

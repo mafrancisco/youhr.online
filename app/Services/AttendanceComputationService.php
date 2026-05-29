@@ -197,10 +197,21 @@ class AttendanceComputationService
                 continue;
             }
 
-            $hasTimeIn  = $this->isValidTime($time1) || $this->isValidTime($time2);
-            $hasTimeOut = $this->isValidTime($time3) || $this->isValidTime($time4);
+            // Determine which time slots have valid data
+            $hasTime1 = $this->isValidTime($time1);  // Time In
+            $hasTime2 = $this->isValidTime($time2);  // Break Out
+            $hasTime3 = $this->isValidTime($time3);  // Break In
+            $hasTime4 = $this->isValidTime($time4);  // Time Out
 
-            if (!$hasTimeIn && !$hasTimeOut) {
+            $hasTimeIn  = $hasTime1;
+            $hasTimeOut = $hasTime4;
+            $hasAnyLog  = $hasTime1 || $hasTime2 || $hasTime3 || $hasTime4;
+
+            // Check if there's a gate pass covering missing time slots
+            $hasGatePass = $this->hasGatePassOnDate($badge, $attDate);
+
+            if (!$hasAnyLog) {
+                // No logs at all
                 if ($hasOT) {
                     $tardiness = 0;
                     $undertime = 0;
@@ -212,20 +223,39 @@ class AttendanceComputationService
                     $undertime = 240;
                 }
             } else {
-                // Tardiness
-                if ($this->isValidTime($time1) && !empty($schedIn)) {
+                // --- Condition 1: No Time In, but BreakOut/BreakIn/TimeOut present ---
+                // 4 hrs tardy (unless gate pass covers it)
+                if (!$hasTime1 && ($hasTime2 || $hasTime3 || $hasTime4)) {
+                    if (!$hasGatePass) {
+                        $tardiness = 240;
+                    }
+                }
+                // --- Normal tardiness: Time In exists but late ---
+                elseif ($hasTime1 && !empty($schedIn)) {
                     $schedInSec  = strtotime($dateYmd . ' ' . $schedIn);
                     $actualInSec = strtotime($dateYmd . ' ' . $time1);
                     if ($actualInSec > $schedInSec) {
                         $tardiness = (int) round(($actualInSec - $schedInSec) / 60);
                     }
                 }
-                if (!$hasTimeIn && !$hasOT) {
-                    $tardiness += 240;
+
+                // --- Condition 3: No Time In AND no Break Out, but BreakIn/TimeOut present ---
+                // Already covered by Condition 1 (4 hrs tardy)
+                if (!$hasTime1 && !$hasTime2 && ($hasTime3 || $hasTime4)) {
+                    if (!$hasGatePass && $tardiness < 240) {
+                        $tardiness = 240;
+                    }
                 }
 
-                // Undertime
-                if ($this->isValidTime($time4) && !empty($schedOut)) {
+                // --- Condition 2: No TimeOut, but TimeIn/BreakOut/BreakIn present ---
+                // 4 hrs undertime (unless gate pass covers it)
+                if (!$hasTime4 && ($hasTime1 || $hasTime2 || $hasTime3)) {
+                    if (!$hasGatePass) {
+                        $undertime = 240;
+                    }
+                }
+                // --- Normal undertime: TimeOut exists but early ---
+                elseif ($hasTime4 && !empty($schedOut)) {
                     $schedInSec  = strtotime($dateYmd . ' ' . $schedIn);
                     $schedOutSec = strtotime($dateYmd . ' ' . $schedOut);
 
@@ -240,11 +270,13 @@ class AttendanceComputationService
 
                     $diff      = ($schedOutSec - $actualOutSec) / 60;
                     $undertime = max(0, (int) round($diff));
-                } else {
-                    if ($hasOT) {
-                        $undertime = 0;
-                    } else {
-                        $undertime = ($dayName === 'sat' || $dayName === 'sun') ? 0 : 240;
+                }
+
+                // --- Condition 4: No BreakIn AND no TimeOut, but TimeIn/BreakOut present ---
+                // Already covered by Condition 2 (4 hrs undertime)
+                if (!$hasTime3 && !$hasTime4 && ($hasTime1 || $hasTime2)) {
+                    if (!$hasGatePass && $undertime < 240) {
+                        $undertime = 240;
                     }
                 }
             }
@@ -475,5 +507,43 @@ class AttendanceComputationService
     private function isOnLeave(string $badge, string $attDate): bool
     {
         return in_array($attDate, $this->leaveDates[$badge] ?? []);
+    }
+
+    /**
+     * Check if there's an approved or pending gate pass on the given date
+     * that exempts the employee from missing-log penalties.
+     * Only Official Business and Official Time exempt. Personal gate passes do NOT exempt.
+     */
+    private function hasGatePassOnDate(string $badge, string $attDate): bool
+    {
+        // Convert AttDate MM/DD/YYYY to Y-m-d for gate pass lookup
+        $parts = explode('/', $attDate);
+        if (count($parts) === 3) {
+            $dateYmd = "{$parts[2]}-{$parts[0]}-{$parts[1]}";
+        } else {
+            $dateYmd = $attDate;
+        }
+
+        // Check pre-loaded gate passes first
+        if (isset($this->gatePasses[$badge][$attDate]) && !empty($this->gatePasses[$badge][$attDate])) {
+            // Only exempt if at least one is Official Business or Official Time
+            foreach ($this->gatePasses[$badge][$attDate] as $gp) {
+                if ($gp->gatepass_type === 'Official Business' || $gp->gatepass_type === 'Official Time') {
+                    return true;
+                }
+            }
+            return false; // Personal gate pass does NOT exempt
+        }
+
+        // Fallback: direct DB check
+        $gp = DB::selectOne("
+            SELECT id FROM gatepass
+            WHERE badgeID = ? AND gatepass_date = ?
+              AND status IN ('Pending', 'Approved')
+              AND gatepass_type IN ('Official Business', 'Official Time')
+            LIMIT 1
+        ", [$badge, $dateYmd]);
+
+        return $gp !== null;
     }
 }

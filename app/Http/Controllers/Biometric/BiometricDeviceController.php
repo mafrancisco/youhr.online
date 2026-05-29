@@ -153,11 +153,37 @@ class BiometricDeviceController extends Controller
     /**
      * Sync attendance logs from device (queued).
      */
-    public function syncLogs(BiometricDevice $device)
+    public function syncLogs(Request $request, BiometricDevice $device)
     {
-        SyncBiometricLogsJob::dispatch($device->id);
+        $request->validate([
+            'start_date' => ['required', 'date_format:Y-m-d'],
+            'end_date'   => ['required', 'date_format:Y-m-d', 'after_or_equal:start_date'],
+        ]);
 
-        return back()->with('success', 'Log sync started. This may take a moment.');
+        // Step 1: Sync raw logs from device
+        $syncResult = $this->zkService->syncLogs($device);
+
+        if ($syncResult->status === 'failed') {
+            return back()->with('error', 'Sync failed: ' . $syncResult->error_message);
+        }
+
+        // Step 2: Process synced logs directly into attendance_clean
+        // Since device_user_id = badgeID, no mapping needed
+        $processor = new \App\Services\BiometricLogProcessorService();
+        $processResult = $processor->processDirectByBadge($request->start_date, $request->end_date);
+
+        // Step 3: Run DTR computation
+        if ($processResult['processed'] > 0) {
+            $computer = new \App\Services\AttendanceComputationService();
+            $computer->compute($request->start_date, $request->end_date);
+        }
+
+        $msg = "Synced {$syncResult->records_new} new logs. {$processResult['message']}";
+        if ($processResult['processed'] > 0) {
+            $msg .= ' DTR computed.';
+        }
+
+        return back()->with('success', $msg);
     }
 
     /**

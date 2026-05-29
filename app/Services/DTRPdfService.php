@@ -169,7 +169,8 @@ class DTRPdfService
 
     private function buildTable(string $badgeID, string $startDate, string $endDate): string
     {
-        $rows = DB::select("
+        // Get existing attendance records keyed by AttDate
+        $rawRows = DB::select("
             SELECT id, AttDate, StartTime1, StartTime2, StartTime3, StartTime4,
                    Tardiness, undertime, OTIn, OTOut, OT, remarks
             FROM attendance_clean
@@ -177,6 +178,40 @@ class DTRPdfService
               AND DATE_FORMAT(STR_TO_DATE(AttDate, '%m/%d/%Y'), '%Y-%m-%d') BETWEEN ? AND ?
             ORDER BY STR_TO_DATE(AttDate, '%m/%d/%Y') ASC
         ", [$badgeID, $startDate, $endDate]);
+
+        // Key records by AttDate for lookup
+        $recordsByDate = [];
+        foreach ($rawRows as $r) {
+            $recordsByDate[$r->AttDate] = $r;
+        }
+
+        // Generate all dates in range
+        $start = \Carbon\Carbon::parse($startDate);
+        $end   = \Carbon\Carbon::parse($endDate);
+        $rows  = [];
+
+        for ($date = $start->copy(); $date->lte($end); $date->addDay()) {
+            $attDate = $date->format('m/d/Y');
+            if (isset($recordsByDate[$attDate])) {
+                $rows[] = $recordsByDate[$attDate];
+            } else {
+                // Create a blank row for dates without records
+                $rows[] = (object) [
+                    'id'         => null,
+                    'AttDate'    => $attDate,
+                    'StartTime1' => '',
+                    'StartTime2' => '',
+                    'StartTime3' => '',
+                    'StartTime4' => '',
+                    'Tardiness'  => 0,
+                    'undertime'  => 0,
+                    'OTIn'       => '',
+                    'OTOut'      => '',
+                    'OT'         => 0,
+                    'remarks'    => '',
+                ];
+            }
+        }
 
         // Pre-load approved leave dates for this employee
         $leaveDates = [];

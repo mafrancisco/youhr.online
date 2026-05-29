@@ -219,69 +219,95 @@ class AttendanceImportService
 
             if (empty($punches)) continue;
 
-            // Detect each punch type using the rules
-            $startTime1 = $this->detectPunch($punches, $schedTimein, $dateYmd, $rules['timein'] ?? null);
-            $startTime2 = $this->detectPunch($punches, $schedBreakout, $dateYmd, $rules['breakout'] ?? null);
-            $startTime3 = $this->detectPunch($punches, $schedBreakin, $dateYmd, $rules['breakin'] ?? null);
-            $startTime4 = $this->detectPunch($punches, $schedTimeout, $dateYmd, $rules['timeout'] ?? null);
-            $otIn       = $this->detectPunch($punches, $schedTimeout, $dateYmd, $rules['otin'] ?? null);
-            $otOut      = $this->detectPunch($punches, $schedTimeout, $dateYmd, $rules['otout'] ?? null);
+            // Sequential pairing with Time Detection Rules:
+            // 1. Detect Time In → remove from pool
+            // 2. Detect Break Out from remaining → remove from pool
+            // 3. Detect Break In: first punch AFTER Break Out (using detection window but also accepting any punch immediately after breakout)
+            // 4. Detect Time Out from remaining → remove from pool
 
-            // Avoid assigning the same punch to multiple slots
-            $used = [];
-            if ($startTime1) $used[] = $startTime1;
+            $pool = $punches; // working copy
 
-            // BreakOut: must be after TimeIn and different from it
-            if ($startTime2 && (in_array($startTime2, $used) || ($startTime1 && $startTime2 <= $startTime1))) {
-                $startTime2 = '';
+            // Step 1: Time In (earliest in window)
+            $startTime1 = $this->detectPunchFromPool($pool, $schedTimein, $dateYmd, $rules['timein'] ?? null);
+            if ($startTime1) {
+                $pool = $this->removePunchFromPool($pool, $startTime1);
             }
-            if ($startTime2) $used[] = $startTime2;
 
-            // BreakIn: must be after BreakOut
-            if ($startTime3 && (in_array($startTime3, $used) || ($startTime2 && $startTime3 <= $startTime2))) {
-                $startTime3 = '';
+            // Step 2: Break Out (latest in window from remaining pool)
+            $startTime2 = $this->detectPunchFromPool($pool, $schedBreakout, $dateYmd, $rules['breakout'] ?? null);
+            if ($startTime2) {
+                $pool = $this->removePunchFromPool($pool, $startTime2);
             }
-            if ($startTime3) $used[] = $startTime3;
 
-            // TimeOut: must be after BreakIn (or TimeIn if no break)
-            $lastBefore = $startTime3 ?: $startTime2 ?: $startTime1;
-            if ($startTime4 && (in_array($startTime4, $used) || ($lastBefore && $startTime4 <= $lastBefore))) {
-                $startTime4 = '';
-            }
-            if ($startTime4) $used[] = $startTime4;
+            // Step 3: Break In — sequential logic
+            // First try: earliest punch AFTER Break Out from remaining pool (even if slightly before normal window)
+            $startTime3 = '';
+            if ($startTime2) {
+                // Find the first punch in the pool that comes after Break Out
+                $breakOutTs = Carbon::parse("$dateYmd $startTime2");
+                $breakInCandidates = array_filter($pool, fn($p) => $p['timestamp']->gt($breakOutTs));
 
-            // OT: must be after TimeOut
-            if ($otIn && ($otIn === $startTime4 || ($startTime4 && $otIn <= $startTime4))) {
-                $otIn = '';
+                if (!empty($breakInCandidates)) {
+                    // Also apply the detection window as a guide, but allow punches right after breakout
+                    $rule = $rules['breakin'] ?? null;
+                    if ($rule) {
+                        $scheduledTs = Carbon::parse("$dateYmd $schedBreakin");
+                        $windowEnd = $scheduledTs->copy()->addMinutes($rule['after_minutes']);
+                        // Window starts from Break Out time (not the normal before_minutes)
+                        $windowStart = $breakOutTs;
+
+                        $filtered = array_filter($breakInCandidates, fn($p) => $p['timestamp']->between($windowStart, $windowEnd));
+
+                        if (!empty($filtered)) {
+                            // Pick earliest (first punch after break out)
+                            usort($filtered, fn($a, $b) => $a['timestamp']->lt($b['timestamp']) ? -1 : 1);
+                            $startTime3 = reset($filtered)['time'];
+                        } else {
+                            // Fallback: just take the first punch after break out
+                            $sorted = array_values($breakInCandidates);
+                            usort($sorted, fn($a, $b) => $a['timestamp']->lt($b['timestamp']) ? -1 : 1);
+                            $startTime3 = $sorted[0]['time'];
+                        }
+                    } else {
+                        // No rule defined, just take first after breakout
+                        $sorted = array_values($breakInCandidates);
+                        usort($sorted, fn($a, $b) => $a['timestamp']->lt($b['timestamp']) ? -1 : 1);
+                        $startTime3 = $sorted[0]['time'];
+                    }
+                }
+            } else {
+                // No Break Out detected, try normal detection
+                $startTime3 = $this->detectPunchFromPool($pool, $schedBreakin, $dateYmd, $rules['breakin'] ?? null);
             }
-            if ($otOut && $otIn && $otOut <= $otIn) {
-                $otOut = '';
+            if ($startTime3) {
+                $pool = $this->removePunchFromPool($pool, $startTime3);
             }
+
+            // Step 4: Time Out (latest in window from remaining pool)
+            $startTime4 = $this->detectPunchFromPool($pool, $schedTimeout, $dateYmd, $rules['timeout'] ?? null);
 
             // Update attendance_clean
             DB::update("
                 UPDATE attendance_clean
                 SET startTime1 = ?, startTime2 = ?, startTime3 = ?, startTime4 = ?,
-                    OTIn = ?, OTOut = ?
+                    OTIn = '', OTOut = ''
                 WHERE id = ?
             ", [
                 $startTime1 ?: '',
                 $startTime2 ?: '',
                 $startTime3 ?: '',
                 $startTime4 ?: '',
-                $otIn ?: '',
-                $otOut ?: '',
                 $rec->id,
             ]);
         }
     }
 
     /**
-     * Find the appropriate punch within the detection window.
+     * Find the appropriate punch within the detection window from a given pool.
      */
-    private function detectPunch(array $punches, string $scheduledTime, string $dateYmd, ?array $rule): string
+    private function detectPunchFromPool(array $pool, string $scheduledTime, string $dateYmd, ?array $rule): string
     {
-        if (empty($scheduledTime) || !$rule) {
+        if (empty($scheduledTime) || !$rule || empty($pool)) {
             return '';
         }
 
@@ -289,9 +315,8 @@ class AttendanceImportService
         $windowStart = $scheduledTs->copy()->subMinutes($rule['before_minutes']);
         $windowEnd   = $scheduledTs->copy()->addMinutes($rule['after_minutes']);
 
-        // Find all punches within the window
         $candidates = [];
-        foreach ($punches as $punch) {
+        foreach ($pool as $punch) {
             if ($punch['timestamp']->between($windowStart, $windowEnd)) {
                 $candidates[] = $punch;
             }
@@ -301,7 +326,6 @@ class AttendanceImportService
             return '';
         }
 
-        // Apply pick rule
         if ($rule['pick_rule'] === 'earliest') {
             usort($candidates, fn($a, $b) => $a['timestamp']->lt($b['timestamp']) ? -1 : 1);
         } else {
@@ -309,6 +333,21 @@ class AttendanceImportService
         }
 
         return $candidates[0]['time'];
+    }
+
+    /**
+     * Remove a punch (by time string) from the pool.
+     */
+    private function removePunchFromPool(array $pool, string $time): array
+    {
+        $removed = false;
+        return array_values(array_filter($pool, function ($p) use ($time, &$removed) {
+            if (!$removed && $p['time'] === $time) {
+                $removed = true;
+                return false;
+            }
+            return true;
+        }));
     }
 
     // -----------------------------------------------------------------------
