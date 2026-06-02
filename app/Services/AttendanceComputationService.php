@@ -337,7 +337,14 @@ class AttendanceComputationService
             if ($this->isOnLeave($badge, $attDate)) continue;
 
             $hasStartPair = $this->isValidTime($time1) && $this->isValidTime($time4);
-            if (!$hasStartPair) continue;
+
+            // Also read device-reported OT punches
+            $OTin  = trim($row->OTIn  ?? '');
+            $OTout = trim($row->OTOut ?? '');
+            $hasDeviceOT = $this->isValidTime($OTin) && $this->isValidTime($OTout);
+
+            // Skip days with no usable data (neither regular pair nor device OT)
+            if (!$hasStartPair && !$hasDeviceOT) continue;
 
             $dayPrefix = $this->dayMap[$dayName];
             $undertime = 0;
@@ -366,17 +373,41 @@ class AttendanceComputationService
                 }
 
                 // Undertime: employee left before scheduled timeout
-                if ($actualOutSec >= $startTime1Sec && $actualOutSec < $schedOutSec) {
+                if ($hasStartPair && $actualOutSec >= $startTime1Sec && $actualOutSec < $schedOutSec) {
                     $undertime = (int) round(($schedOutSec - $actualOutSec) / 60);
                 }
 
-                // Overtime: time worked beyond OT threshold
-                // OT threshold = scheduled timeout + offset minutes
-                $otThresholdSec = $schedOutSec + ($otOffsetMinutes * 60);
-                if ($actualOutSec > $otThresholdSec) {
-                    $overtime = (int) round(($actualOutSec - $otThresholdSec) / 60);
+                // Overtime computation:
+                // Priority 1 — device-reported OT (attType 4/5): trust OTIn and OTOut directly.
+                // Priority 2 — computed OT: time4 stayed past the OT threshold.
+                if ($hasDeviceOT) {
+                    $otInSec  = strtotime("$dateYmd $OTin");
+                    $otOutSec = strtotime("$dateYmd $OTout");
+                    if ($otOutSec <= $otInSec) {
+                        $otOutSec = strtotime("$dateYmd $OTout +1 day"); // cross-midnight OT
+                    }
+                    $overtime = (int) round(($otOutSec - $otInSec) / 60);
                     if ($overtime < 0) $overtime = 0;
+                } elseif ($hasStartPair) {
+                    // Computed OT: time4 beyond scheduled timeout + offset
+                    $otThresholdSec = $schedOutSec + ($otOffsetMinutes * 60);
+                    if ($actualOutSec > $otThresholdSec) {
+                        $overtime = (int) round(($actualOutSec - $otThresholdSec) / 60);
+                        if ($overtime < 0) $overtime = 0;
+                    }
                 }
+            }
+
+            // --- Half-day rule: TimeIn + TimeOut present but no BreakOut / BreakIn ---
+            // The day counts as 0.5-day worked; enforce 4-hr undertime when no
+            // undertime was already recorded (employee stayed past scheduled timeout).
+            $time2sp = trim($row->StartTime2 ?? '');
+            $time3sp = trim($row->StartTime3 ?? '');
+            if ($hasStartPair
+                && !$this->isValidTime($time2sp)
+                && !$this->isValidTime($time3sp)
+                && $undertime === 0) {
+                $undertime = 240;
             }
 
             // --- Gate Pass Adjustment ---

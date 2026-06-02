@@ -1,10 +1,10 @@
 <script setup>
-import { ref } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { useForm } from '@inertiajs/vue3'
 import AppLayout from '@/Layouts/AppLayout.vue'
-import { Modal, PrimaryButton, FlashMessage, DataTable, FormInput, SelectInput, PageHeader } from '@/Components'
+import { Modal, PrimaryButton, FlashMessage, DataTable, FormInput, SelectInput, SearchInput, Pagination, PageHeader } from '@/Components'
 
-defineProps({
+const props = defineProps({
   credits:   Array,
   employees: Array,
 })
@@ -71,22 +71,57 @@ function submitAdd() {
 function submitEdit() {
   editForm.put(`/credits/${editTarget.value.badgeID}`, { onSuccess: closeEdit })
 }
+
+const search      = ref('')
+const perPage     = ref(15)
+const currentPage = ref(1)
+const PER_PAGE_OPTIONS = [10, 15, 25, 50]
+
+const filtered = computed(() => {
+  const q = search.value.trim().toLowerCase()
+  if (!q) return props.credits
+  return props.credits.filter(c =>
+    (c.empName ?? '').toLowerCase().includes(q) ||
+    (c.badgeID ?? '').toLowerCase().includes(q)
+  )
+})
+const totalPages = computed(() => Math.max(1, Math.ceil(filtered.value.length / perPage.value)))
+const paginated  = computed(() => {
+  const start = (currentPage.value - 1) * perPage.value
+  return filtered.value.slice(start, start + perPage.value)
+})
+watch([search, perPage], () => { currentPage.value = 1 })
 </script>
 
 <template>
   <AppLayout title="Leave Credits">
     <FlashMessage />
 
-    <PageHeader title="Leave Credits" :subtitle="`(${credits.length})`">
+    <PageHeader title="Leave Credits" :subtitle="`${filtered.length} record${filtered.length !== 1 ? 's' : ''}`">
       <PrimaryButton @click="addModal = true">+ Add Employee</PrimaryButton>
     </PageHeader>
 
-    <DataTable :columns="columns" :rows="credits">
+    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+      <SearchInput v-model="search" placeholder="Search by name or badge ID…" class="w-full sm:w-72" />
+      <div class="flex items-center gap-2 text-xs text-gray-500">
+        <span>Show</span>
+        <select v-model="perPage" class="border border-gray-300 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-400">
+          <option v-for="n in PER_PAGE_OPTIONS" :key="n" :value="n">{{ n }}</option>
+        </select>
+        <span>per page</span>
+      </div>
+    </div>
+
+    <DataTable :columns="columns" :rows="paginated">
       <template #actions="{ row }">
         <button @click="openEdit(row)" class="text-blue-600 hover:underline text-xs">Edit</button>
       </template>
       <template #empty>No leave credit records yet.</template>
     </DataTable>
+
+    <div class="mt-4">
+      <Pagination :currentPage="currentPage" :totalPages="totalPages" :totalItems="filtered.length" @update:currentPage="currentPage = $event" />
+    </div>
 
     <!-- Add employee modal -->
     <Modal :show="addModal" size="sm" @close="addModal = false">

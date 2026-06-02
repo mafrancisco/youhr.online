@@ -36,7 +36,8 @@ COPY . .
 COPY --from=frontend /app/public/build public/build
 
 # Optimise autoloader for production
-RUN composer dump-autoload --optimize --no-dev
+RUN composer dump-autoload --optimize --no-dev \
+ && php artisan package:discover --ansi || true
 
 # Keep a copy of public/ so the entrypoint can populate the shared volume
 RUN cp -r public public_init

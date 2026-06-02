@@ -3,12 +3,13 @@
 namespace App\Services;
 
 use App\Models\Employee;
-use App\Models\TimeDetectionSetting;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 
 class AttendanceImportService
 {
+    public function __construct(private PunchClassifierService $classifier) {}
+
     /**
      * Import attendance from one or more DAT/CSV files.
      *
@@ -16,7 +17,7 @@ class AttendanceImportService
      * Step 1: Parse ALL files and insert into attendance staging table
      * Step 2.1: Delete old attendance_clean and request records for those badges in range
      * Step 2.2: Seed attendance_clean with all dates in range per employee
-     * Step 2.3: Classify punches using Time Detection Rules (schedule-based)
+     * Step 2.3: Classify punches using Time Detection Rules (via PunchClassifierService)
      * Step 2.4: Truncate attendance staging table
      */
     public function import(array $filePaths, string $startDate, string $endDate, int $empStatus): int
@@ -72,44 +73,30 @@ class AttendanceImportService
                   BETWEEN STR_TO_DATE(?, '%Y-%m-%d') AND STR_TO_DATE(?, '%Y-%m-%d')
         ", [$startDate, $endDate]);
 
+        // Collect per-badge punch dates so seedDateRange can label days correctly
+        $punchDatesByBadge = [];
         foreach ($employees as $emp) {
-            $badge   = $emp->BadgeNumber;
-            $current = $start->copy();
+            $rows = DB::select(
+                "SELECT DISTINCT attDate FROM attendance WHERE BadgeNumber = ?",
+                [$emp->BadgeNumber]
+            );
+            $punchDatesByBadge[$emp->BadgeNumber] = array_column($rows, 'attDate');
+        }
 
-            while ($current <= $end) {
-                $attDate   = $current->format('m/d/Y');
-                $dayOfWeek = $current->dayOfWeekIso;
+        $this->classifier->loadRules();
+        $this->classifier->loadSchedules();
 
-                $hasAtt = DB::selectOne(
-                    "SELECT COUNT(*) AS cnt FROM attendance WHERE BadgeNumber = ? AND attDate = ?",
-                    [$badge, $attDate]
-                )->cnt > 0;
-
-                if (!$hasAtt) {
-                    $label = '';
-                    if ($dayOfWeek == 6) $label = 'Saturday';
-                    if ($dayOfWeek == 7) $label = 'Sunday';
-
-                    DB::insert("
-                        INSERT INTO attendance_clean (BadgeNumber, AttDate, startTime1, startTime2, startTime3, startTime4)
-                        VALUES (?, ?, ?, ?, ?, ?)
-                    ", [$badge, $attDate, $label, $label, $label, $label]);
-                } else {
-                    DB::insert("
-                        INSERT INTO attendance_clean (BadgeNumber, AttDate, startTime1, startTime2, startTime3, startTime4)
-                        VALUES (?, ?, '', '', '', '')
-                    ", [$badge, $attDate]);
-                }
-
-                $current->addDay();
-            }
+        foreach ($employees as $emp) {
+            $this->classifier->seedDateRange(
+                $emp->BadgeNumber,
+                $startDate,
+                $endDate,
+                $punchDatesByBadge[$emp->BadgeNumber] ?? []
+            );
         }
 
         // ===================================================================
         // Step 2.3: Classify punches using Time Detection Rules
-        //           Instead of relying on device attType, use the employee's
-        //           schedule + configurable detection windows to determine
-        //           which punch is TimeIn, BreakOut, BreakIn, TimeOut, OTIn, OTOut
         // ===================================================================
         $this->classifyPunchesBySchedule($startDate, $endDate);
 
@@ -122,47 +109,11 @@ class AttendanceImportService
     }
 
     /**
-     * Classify raw punches into TimeIn/BreakOut/BreakIn/TimeOut/OTIn/OTOut
-     * using the employee's schedule and the Time Detection Settings.
+     * Classify raw punches from the staging table into attendance_clean slots.
      */
     private function classifyPunchesBySchedule(string $startDate, string $endDate): void
     {
-        // Load detection rules
-        $rules = [];
-        $settings = DB::select("SELECT * FROM time_detection_settings");
-        foreach ($settings as $s) {
-            $rules[$s->punch_type] = [
-                'before_minutes' => (int) $s->before_minutes,
-                'after_minutes'  => (int) $s->after_minutes,
-                'pick_rule'      => $s->pick_rule,
-            ];
-        }
-
-        // If no rules configured, fall back to defaults
-        if (empty($rules)) {
-            $rules = [
-                'timein'   => ['before_minutes' => 180, 'after_minutes' => 120, 'pick_rule' => 'earliest'],
-                'breakout' => ['before_minutes' => 120, 'after_minutes' => 30,  'pick_rule' => 'latest'],
-                'breakin'  => ['before_minutes' => 30,  'after_minutes' => 120, 'pick_rule' => 'earliest'],
-                'timeout'  => ['before_minutes' => 120, 'after_minutes' => 180, 'pick_rule' => 'latest'],
-                'otin'     => ['before_minutes' => 30,  'after_minutes' => 60,  'pick_rule' => 'earliest'],
-                'otout'    => ['before_minutes' => 60,  'after_minutes' => 180, 'pick_rule' => 'latest'],
-            ];
-        }
-
-        // Load all schedules
-        $schedules = [];
-        $schedRows = DB::select("SELECT * FROM schedule");
-        foreach ($schedRows as $s) {
-            $schedules[$s->id] = $s;
-        }
-
-        $dayMap = [
-            'mon' => 'm', 'tue' => 't', 'wed' => 'w', 'thu' => 'th',
-            'fri' => 'f', 'sat' => 'sat', 'sun' => 'sun',
-        ];
-
-        // Get all attendance_clean records that have punches (blank StartTime1)
+        // Only process rows that were seeded blank (startTime1 = '')
         $cleanRecords = DB::select("
             SELECT c.id, c.BadgeNumber, c.AttDate, e.schedule
             FROM attendance_clean c
@@ -175,179 +126,58 @@ class AttendanceImportService
         foreach ($cleanRecords as $rec) {
             $badge   = $rec->BadgeNumber;
             $attDate = $rec->AttDate;
-            $schedId = $rec->schedule;
-
-            // Convert AttDate MM/DD/YYYY to Y-m-d
             [$m, $d, $y] = explode('/', $attDate);
             $dateYmd = "$y-$m-$d";
-            $dayName = strtolower(date('D', strtotime($dateYmd)));
-            $dayPrefix = $dayMap[$dayName] ?? '';
 
-            // Get schedule for this day
-            $sched = $schedules[$schedId] ?? null;
-            if (!$sched || !$dayPrefix) continue;
-
-            $schedTimein  = $sched->{$dayPrefix . '_timein'} ?? '';
-            $schedBreakout = $sched->{$dayPrefix . '_breakout'} ?? '';
-            $schedBreakin  = $sched->{$dayPrefix . '_breakin'} ?? '';
-            $schedTimeout  = $sched->{$dayPrefix . '_timeout'} ?? '';
-
-            if (empty($schedTimein)) continue; // No schedule for this day
-
-            // Get all raw punches for this employee on this date
+            // Fetch raw punches from staging table (attType: 4=OT In, 5=OT Out)
             $rawPunches = DB::select(
-                "SELECT attTime FROM attendance WHERE BadgeNumber = ? AND attDate = ? ORDER BY attTime ASC",
+                "SELECT attTime, attType FROM attendance WHERE BadgeNumber = ? AND attDate = ? ORDER BY attTime ASC",
                 [$badge, $attDate]
             );
 
-            if (empty($rawPunches)) continue;
+            if (empty($rawPunches)) {
+                continue;
+            }
 
-            // Build punch list with Carbon timestamps
+            // Separate regular punches from device-reported OT punches
             $punches = [];
+            $otIn    = '';
+            $otOut   = '';
             foreach ($rawPunches as $p) {
-                $time = trim($p->attTime);
-                if (empty($time)) continue;
+                $time     = trim($p->attTime);
+                $punchType = (int) $p->attType;
+                if ($time === '') continue;
                 try {
-                    $punches[] = [
-                        'time'      => $time,
-                        'timestamp' => Carbon::parse("$dateYmd $time"),
-                    ];
+                    $ts = Carbon::parse("$dateYmd $time");
                 } catch (\Throwable) {
                     continue;
                 }
-            }
-
-            if (empty($punches)) continue;
-
-            // Sequential pairing with Time Detection Rules:
-            // 1. Detect Time In → remove from pool
-            // 2. Detect Break Out from remaining → remove from pool
-            // 3. Detect Break In: first punch AFTER Break Out (using detection window but also accepting any punch immediately after breakout)
-            // 4. Detect Time Out from remaining → remove from pool
-
-            $pool = $punches; // working copy
-
-            // Step 1: Time In (earliest in window)
-            $startTime1 = $this->detectPunchFromPool($pool, $schedTimein, $dateYmd, $rules['timein'] ?? null);
-            if ($startTime1) {
-                $pool = $this->removePunchFromPool($pool, $startTime1);
-            }
-
-            // Step 2: Break Out (latest in window from remaining pool)
-            $startTime2 = $this->detectPunchFromPool($pool, $schedBreakout, $dateYmd, $rules['breakout'] ?? null);
-            if ($startTime2) {
-                $pool = $this->removePunchFromPool($pool, $startTime2);
-            }
-
-            // Step 3: Break In — sequential logic
-            // First try: earliest punch AFTER Break Out from remaining pool (even if slightly before normal window)
-            $startTime3 = '';
-            if ($startTime2) {
-                // Find the first punch in the pool that comes after Break Out
-                $breakOutTs = Carbon::parse("$dateYmd $startTime2");
-                $breakInCandidates = array_filter($pool, fn($p) => $p['timestamp']->gt($breakOutTs));
-
-                if (!empty($breakInCandidates)) {
-                    // Also apply the detection window as a guide, but allow punches right after breakout
-                    $rule = $rules['breakin'] ?? null;
-                    if ($rule) {
-                        $scheduledTs = Carbon::parse("$dateYmd $schedBreakin");
-                        $windowEnd = $scheduledTs->copy()->addMinutes($rule['after_minutes']);
-                        // Window starts from Break Out time (not the normal before_minutes)
-                        $windowStart = $breakOutTs;
-
-                        $filtered = array_filter($breakInCandidates, fn($p) => $p['timestamp']->between($windowStart, $windowEnd));
-
-                        if (!empty($filtered)) {
-                            // Pick earliest (first punch after break out)
-                            usort($filtered, fn($a, $b) => $a['timestamp']->lt($b['timestamp']) ? -1 : 1);
-                            $startTime3 = reset($filtered)['time'];
-                        } else {
-                            // Fallback: just take the first punch after break out
-                            $sorted = array_values($breakInCandidates);
-                            usort($sorted, fn($a, $b) => $a['timestamp']->lt($b['timestamp']) ? -1 : 1);
-                            $startTime3 = $sorted[0]['time'];
-                        }
-                    } else {
-                        // No rule defined, just take first after breakout
-                        $sorted = array_values($breakInCandidates);
-                        usort($sorted, fn($a, $b) => $a['timestamp']->lt($b['timestamp']) ? -1 : 1);
-                        $startTime3 = $sorted[0]['time'];
-                    }
+                if ($punchType === 4) {
+                    $otIn = $time;          // OT In — device-reported
+                } elseif ($punchType === 5) {
+                    $otOut = $time;         // OT Out — device-reported
+                } else {
+                    $punches[] = ['time' => $time, 'timestamp' => $ts];
                 }
-            } else {
-                // No Break Out detected, try normal detection
-                $startTime3 = $this->detectPunchFromPool($pool, $schedBreakin, $dateYmd, $rules['breakin'] ?? null);
-            }
-            if ($startTime3) {
-                $pool = $this->removePunchFromPool($pool, $startTime3);
             }
 
-            // Step 4: Time Out (latest in window from remaining pool)
-            $startTime4 = $this->detectPunchFromPool($pool, $schedTimeout, $dateYmd, $rules['timeout'] ?? null);
+            if (empty($punches) && $otIn === '' && $otOut === '') {
+                continue;
+            }
 
-            // Update attendance_clean
-            DB::update("
-                UPDATE attendance_clean
-                SET startTime1 = ?, startTime2 = ?, startTime3 = ?, startTime4 = ?,
-                    OTIn = '', OTOut = ''
-                WHERE id = ?
-            ", [
-                $startTime1 ?: '',
-                $startTime2 ?: '',
-                $startTime3 ?: '',
-                $startTime4 ?: '',
-                $rec->id,
-            ]);
-        }
-    }
+            // classifyAndWrite does DELETE + INSERT, resetting OTIn/OTOut
+            if (!empty($punches)) {
+                $this->classifier->classifyAndWrite($badge, $attDate, $dateYmd, $rec->schedule, $punches);
+            }
 
-    /**
-     * Find the appropriate punch within the detection window from a given pool.
-     */
-    private function detectPunchFromPool(array $pool, string $scheduledTime, string $dateYmd, ?array $rule): string
-    {
-        if (empty($scheduledTime) || !$rule || empty($pool)) {
-            return '';
-        }
-
-        $scheduledTs = Carbon::parse("$dateYmd $scheduledTime");
-        $windowStart = $scheduledTs->copy()->subMinutes($rule['before_minutes']);
-        $windowEnd   = $scheduledTs->copy()->addMinutes($rule['after_minutes']);
-
-        $candidates = [];
-        foreach ($pool as $punch) {
-            if ($punch['timestamp']->between($windowStart, $windowEnd)) {
-                $candidates[] = $punch;
+            // Write device-reported OT punches (must run AFTER classifyAndWrite)
+            if ($otIn !== '' || $otOut !== '') {
+                DB::update(
+                    "UPDATE attendance_clean SET OTIn = ?, OTOut = ? WHERE BadgeNumber = ? AND AttDate = ?",
+                    [$otIn, $otOut, $badge, $attDate]
+                );
             }
         }
-
-        if (empty($candidates)) {
-            return '';
-        }
-
-        if ($rule['pick_rule'] === 'earliest') {
-            usort($candidates, fn($a, $b) => $a['timestamp']->lt($b['timestamp']) ? -1 : 1);
-        } else {
-            usort($candidates, fn($a, $b) => $a['timestamp']->gt($b['timestamp']) ? -1 : 1);
-        }
-
-        return $candidates[0]['time'];
-    }
-
-    /**
-     * Remove a punch (by time string) from the pool.
-     */
-    private function removePunchFromPool(array $pool, string $time): array
-    {
-        $removed = false;
-        return array_values(array_filter($pool, function ($p) use ($time, &$removed) {
-            if (!$removed && $p['time'] === $time) {
-                $removed = true;
-                return false;
-            }
-            return true;
-        }));
     }
 
     // -----------------------------------------------------------------------
@@ -424,10 +254,12 @@ class AttendanceImportService
                     ->first();
 
                 if ($emp) {
-                    // Store with attType=0 (type is irrelevant, classification done by schedule)
+                    // Store actual attType from DAT column 3:
+                    // 0=regular, 1=regular, 4=OT In, 5=OT Out
+                    $attTypeVal = isset($values[3]) ? (int) trim($values[3]) : 0;
                     DB::insert(
                         "INSERT INTO attendance (BadgeNumber, attDate, attTime, attType) VALUES (?, ?, ?, ?)",
-                        [$id, $attdate, $attTime, 0]
+                        [$id, $attdate, $attTime, $attTypeVal]
                     );
                     $count++;
                 }

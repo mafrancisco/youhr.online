@@ -22,6 +22,7 @@ class DTRPdfService
             'margin_left'    => 12.7,
             'margin_right'   => 12.7,
             'default_font'   => 'arial',
+            'tempDir'        => storage_path('app/mpdf-tmp'),
         ]);
         $mpdf->SetAutoPageBreak(false);
         return $mpdf;
@@ -315,11 +316,14 @@ class DTRPdfService
             }
 
             // Count work days
+            // 4 slots filled          → 1 full day
+            // 2–3 slots filled        → 0.5 day
+            // 0–1 slot filled         → absent (0)
             $filledLogs = 0;
             foreach ([$row->StartTime1, $row->StartTime2, $row->StartTime3, $row->StartTime4] as $log) {
                 if (!empty($log) && !in_array($log, ['Saturday', 'Sunday', 'L', 'OB'])) $filledLogs++;
             }
-            if ($filledLogs > 2) {
+            if ($filledLogs === 4) {
                 $totwork += 1;
             } elseif ($filledLogs >= 2) {
                 $totwork += 0.5;

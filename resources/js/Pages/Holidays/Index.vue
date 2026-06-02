@@ -1,12 +1,14 @@
 <script setup>
-import { ref } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { useForm, router } from '@inertiajs/vue3'
 import AppLayout from '@/Layouts/AppLayout.vue'
 import Modal from '@/Components/Modal.vue'
 import PrimaryButton from '@/Components/PrimaryButton.vue'
 import FlashMessage from '@/Components/FlashMessage.vue'
+import SearchInput from '@/Components/SearchInput.vue'
+import Pagination from '@/Components/Pagination.vue'
 
-defineProps({
+const props = defineProps({
   types:      Array,
   parameters: Array,
 })
@@ -79,15 +81,47 @@ const typeColors = {
 function badgeClass(type) {
   return typeColors[type] ?? 'bg-gray-100 text-gray-600'
 }
+
+const search      = ref('')
+const perPage     = ref(15)
+const currentPage = ref(1)
+const PER_PAGE_OPTIONS = [10, 15, 25, 50]
+
+const filtered = computed(() => {
+  const q = search.value.trim().toLowerCase()
+  if (!q) return props.parameters
+  return props.parameters.filter(p =>
+    (p.description ?? '').toLowerCase().includes(q) ||
+    (p.type ?? '').toLowerCase().includes(q) ||
+    (p.actualDate ?? '').includes(q)
+  )
+})
+const totalPages = computed(() => Math.max(1, Math.ceil(filtered.value.length / perPage.value)))
+const paginated  = computed(() => {
+  const start = (currentPage.value - 1) * perPage.value
+  return filtered.value.slice(start, start + perPage.value)
+})
+watch([search, perPage], () => { currentPage.value = 1 })
 </script>
 
 <template>
   <AppLayout title="Date Parameters">
     <FlashMessage />
 
-    <div class="flex items-center justify-between mb-5">
-      <h2 class="text-base font-semibold text-gray-700">Date Parameters ({{ parameters.length }})</h2>
+    <div class="flex items-center justify-between mb-3">
+      <h2 class="text-base font-semibold text-gray-700">Date Parameters ({{ filtered.length }})</h2>
       <PrimaryButton @click="openAdd">+ Add Parameter</PrimaryButton>
+    </div>
+
+    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+      <SearchInput v-model="search" placeholder="Search by description, type or date…" class="w-full sm:w-80" />
+      <div class="flex items-center gap-2 text-xs text-gray-500">
+        <span>Show</span>
+        <select v-model="perPage" class="border border-gray-300 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-400">
+          <option v-for="n in PER_PAGE_OPTIONS" :key="n" :value="n">{{ n }}</option>
+        </select>
+        <span>per page</span>
+      </div>
     </div>
 
     <div class="bg-white rounded-xl shadow overflow-hidden">
@@ -105,7 +139,7 @@ function badgeClass(type) {
           </tr>
         </thead>
         <tbody class="divide-y divide-gray-100">
-          <tr v-for="p in parameters" :key="p.id" class="hover:bg-gray-50">
+          <tr v-for="p in paginated" :key="p.id" class="hover:bg-gray-50">
             <td class="px-4 py-3 font-mono text-gray-700">{{ p.actualDate }}</td>
             <td class="px-4 py-3">
               <span class="px-2 py-0.5 rounded-full text-xs font-medium" :class="badgeClass(p.type)">
@@ -122,11 +156,15 @@ function badgeClass(type) {
               <button @click="destroy(p)"  class="text-red-500 hover:underline text-xs">Delete</button>
             </td>
           </tr>
-          <tr v-if="!parameters.length">
+          <tr v-if="!paginated.length">
             <td colspan="8" class="px-4 py-8 text-center text-gray-400">No date parameters yet.</td>
           </tr>
         </tbody>
       </table>
+    </div>
+
+    <div class="mt-4">
+      <Pagination :currentPage="currentPage" :totalPages="totalPages" :totalItems="filtered.length" @update:currentPage="currentPage = $event" />
     </div>
 
     <!-- Add / Edit modal -->

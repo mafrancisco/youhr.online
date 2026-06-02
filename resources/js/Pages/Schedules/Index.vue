@@ -1,10 +1,10 @@
 <script setup>
-import { ref } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { useForm, router } from '@inertiajs/vue3'
 import AppLayout from '@/Layouts/AppLayout.vue'
-import { Modal, PrimaryButton, FlashMessage, DataTable, FormInput, PageHeader, ConfirmDialog } from '@/Components'
+import { Modal, PrimaryButton, FlashMessage, DataTable, FormInput, SearchInput, Pagination, PageHeader, ConfirmDialog } from '@/Components'
 
-defineProps({ schedules: Array })
+const props = defineProps({ schedules: Array })
 
 const DAYS = [
   { key: 'm',   label: 'Monday' },
@@ -96,20 +96,52 @@ function activeDays(sched) {
   return DAYS.filter(({ key }) => sched[`${key}_timein`]).map(d => d.label.slice(0, 3)).join(', ')
 }
 
-function tableRows(schedules) {
-  return schedules.map(s => ({ ...s, activeDays: activeDays(s) || '—' }))
+function tableRows(list) {
+  return list.map(s => ({ ...s, activeDays: activeDays(s) || '—' }))
 }
+
+const search      = ref('')
+const perPage     = ref(15)
+const currentPage = ref(1)
+const PER_PAGE_OPTIONS = [10, 15, 25, 50]
+
+const allRows  = computed(() => tableRows(props.schedules))
+const filtered = computed(() => {
+  const q = search.value.trim().toLowerCase()
+  if (!q) return allRows.value
+  return allRows.value.filter(r =>
+    r.schedulename.toLowerCase().includes(q) ||
+    r.activeDays.toLowerCase().includes(q)
+  )
+})
+const totalPages = computed(() => Math.max(1, Math.ceil(filtered.value.length / perPage.value)))
+const paginated  = computed(() => {
+  const start = (currentPage.value - 1) * perPage.value
+  return filtered.value.slice(start, start + perPage.value)
+})
+watch([search, perPage], () => { currentPage.value = 1 })
 </script>
 
 <template>
   <AppLayout title="Schedules">
     <FlashMessage />
 
-    <PageHeader title="Schedules" :subtitle="`(${schedules.length})`">
+    <PageHeader title="Schedules" :subtitle="`${filtered.length} schedule${filtered.length !== 1 ? 's' : ''}`">
       <PrimaryButton @click="openAdd">+ Add Schedule</PrimaryButton>
     </PageHeader>
 
-    <DataTable :columns="columns" :rows="tableRows(schedules)">
+    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+      <SearchInput v-model="search" placeholder="Search schedules…" class="w-full sm:w-72" />
+      <div class="flex items-center gap-2 text-xs text-gray-500">
+        <span>Show</span>
+        <select v-model="perPage" class="border border-gray-300 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-400">
+          <option v-for="n in PER_PAGE_OPTIONS" :key="n" :value="n">{{ n }}</option>
+        </select>
+        <span>per page</span>
+      </div>
+    </div>
+
+    <DataTable :columns="columns" :rows="paginated">
       <template #actions="{ row }">
         <button @click="viewTarget = row" class="text-green-600 hover:underline text-xs mr-3">View</button>
         <button @click="openEdit(row)" class="text-blue-600 hover:underline text-xs mr-3">Edit</button>
@@ -117,6 +149,10 @@ function tableRows(schedules) {
       </template>
       <template #empty>No schedules yet.</template>
     </DataTable>
+
+    <div class="mt-4">
+      <Pagination :currentPage="currentPage" :totalPages="totalPages" :totalItems="filtered.length" @update:currentPage="currentPage = $event" />
+    </div>
 
     <!-- Add / Edit modal -->
     <Modal :show="modalMode !== null" size="xl" @close="closeModal">

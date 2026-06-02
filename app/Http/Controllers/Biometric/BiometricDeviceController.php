@@ -11,6 +11,8 @@ use App\Models\BiometricEmployeeMapping;
 use App\Models\BiometricLog;
 use App\Models\BiometricSyncHistory;
 use App\Models\Employee;
+use App\Services\AttendanceComputationService;
+use App\Services\BiometricLogProcessorService;
 use App\Services\ZKTecoService;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -18,7 +20,11 @@ use Inertia\Response;
 
 class BiometricDeviceController extends Controller
 {
-    public function __construct(private ZKTecoService $zkService) {}
+    public function __construct(
+        private ZKTecoService $zkService,
+        private BiometricLogProcessorService $processor,
+        private AttendanceComputationService $computer,
+    ) {}
 
     /**
      * Device list page.
@@ -168,14 +174,12 @@ class BiometricDeviceController extends Controller
         }
 
         // Step 2: Process synced logs directly into attendance_clean
-        // Since device_user_id = badgeID, no mapping needed
-        $processor = new \App\Services\BiometricLogProcessorService();
-        $processResult = $processor->processDirectByBadge($request->start_date, $request->end_date);
+        // device_user_id IS the badgeID — no mapping needed
+        $processResult = $this->processor->process($request->start_date, $request->end_date, false);
 
         // Step 3: Run DTR computation
         if ($processResult['processed'] > 0) {
-            $computer = new \App\Services\AttendanceComputationService();
-            $computer->compute($request->start_date, $request->end_date);
+            $this->computer->compute($request->start_date, $request->end_date);
         }
 
         $msg = "Synced {$syncResult->records_new} new logs. {$processResult['message']}";
@@ -206,13 +210,10 @@ class BiometricDeviceController extends Controller
             'end_date'   => ['required', 'date_format:Y-m-d', 'after_or_equal:start_date'],
         ]);
 
-        $processor = new \App\Services\BiometricLogProcessorService();
-        $result = $processor->process($request->start_date, $request->end_date);
+        $result = $this->processor->process($request->start_date, $request->end_date, true);
 
         if ($result['processed'] > 0) {
-            // Run DTR computation after processing
-            $computer = new \App\Services\AttendanceComputationService();
-            $computer->compute($request->start_date, $request->end_date);
+            $this->computer->compute($request->start_date, $request->end_date);
         }
 
         return back()->with('success', $result['message'] . ($result['processed'] > 0 ? ' DTR computed.' : ''));

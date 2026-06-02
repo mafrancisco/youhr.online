@@ -14,7 +14,8 @@ class UserController extends Controller
 {
     public function index(): Response
     {
-        $users = User::orderBy('fullname')->get(['id', 'username', 'fullname', 'email', 'type'])
+        $users = User::orderBy('fullname')
+            ->get(['id', 'username', 'fullname', 'email', 'type'])
             ->map(fn($u) => [
                 'id'        => $u->id,
                 'username'  => $u->username,
@@ -49,6 +50,32 @@ class UserController extends Controller
         ]);
 
         return back()->with('success', 'User account created.');
+    }
+
+    public function update(Request $request, User $user)
+    {
+        $request->validate([
+            'username' => ['required', 'string', 'max:100', "unique:users,username,{$user->id}"],
+            'email'    => ['nullable', 'email', 'max:150'],
+            'fullname' => ['required', 'string', 'max:150'],
+            'type'     => ['required', 'in:1,2'],
+            'password' => ['nullable', 'string', 'min:8', 'confirmed'],
+        ]);
+
+        $data = [
+            'username' => $request->username,
+            'fullname' => $request->fullname,
+            'email'    => $request->email,
+            'type'     => (int) $request->type,
+        ];
+
+        if ($request->filled('password')) {
+            $data['password'] = Hash::make($request->password);
+        }
+
+        $user->update($data);
+
+        return back()->with('success', 'User account updated.');
     }
 
     public function destroy(Request $request, User $user)

@@ -1,8 +1,8 @@
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { useForm } from '@inertiajs/vue3'
 import AppLayout from '@/Layouts/AppLayout.vue'
-import { Modal, PrimaryButton, FlashMessage, DataTable, FormInput, SelectInput, PageHeader, StatusBadge } from '@/Components'
+import { Modal, PrimaryButton, FlashMessage, DataTable, FormInput, SelectInput, SearchInput, Pagination, PageHeader, StatusBadge } from '@/Components'
 
 const props = defineProps({
   pending:  Array,
@@ -11,6 +11,32 @@ const props = defineProps({
 })
 
 const activeTab = ref('pending')
+
+const search      = ref('')
+const perPage     = ref(15)
+const currentPage = ref(1)
+const PER_PAGE_OPTIONS = [10, 15, 25, 50]
+
+const currentTabData = computed(() => {
+  if (activeTab.value === 'pending')  return props.pending
+  if (activeTab.value === 'approved') return props.approved
+  return props.declined
+})
+const filtered = computed(() => {
+  const q = search.value.trim().toLowerCase()
+  if (!q) return currentTabData.value
+  return currentTabData.value.filter(r =>
+    (r.empName ?? '').toLowerCase().includes(q) ||
+    (r.controlno ?? '').toLowerCase().includes(q) ||
+    (r.type_name ?? '').toLowerCase().includes(q)
+  )
+})
+const totalPages = computed(() => Math.max(1, Math.ceil(filtered.value.length / perPage.value)))
+const paginated  = computed(() => {
+  const start = (currentPage.value - 1) * perPage.value
+  return filtered.value.slice(start, start + perPage.value)
+})
+watch([activeTab, search, perPage], () => { currentPage.value = 1 })
 
 const columns = [
   { key: 'controlno',  label: 'Control No.',  cellClass: 'font-mono text-xs text-gray-600' },
@@ -73,23 +99,35 @@ const currentCredits = computed(() => modalTarget.value?.credits || null)
       <button @click="activeTab = 'pending'"
         class="px-4 py-2 text-sm font-medium border-b-2 transition-colors"
         :class="activeTab === 'pending' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'">
-        Pending <span class="ml-1 text-xs bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full">{{ pending.length }}</span>
+        Pending <span class="ml-1 text-xs bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full">{{ props.pending.length }}</span>
       </button>
       <button @click="activeTab = 'approved'"
         class="px-4 py-2 text-sm font-medium border-b-2 transition-colors"
         :class="activeTab === 'approved' ? 'border-green-600 text-green-600' : 'border-transparent text-gray-500 hover:text-gray-700'">
-        Approved <span class="ml-1 text-xs text-gray-400">({{ approved.length }})</span>
+        Approved <span class="ml-1 text-xs text-gray-400">({{ props.approved.length }})</span>
       </button>
       <button @click="activeTab = 'declined'"
         class="px-4 py-2 text-sm font-medium border-b-2 transition-colors"
         :class="activeTab === 'declined' ? 'border-red-600 text-red-600' : 'border-transparent text-gray-500 hover:text-gray-700'">
-        Declined <span class="ml-1 text-xs text-gray-400">({{ declined.length }})</span>
+        Declined <span class="ml-1 text-xs text-gray-400">({{ props.declined.length }})</span>
       </button>
+    </div>
+
+    <!-- Search + per-page -->
+    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+      <SearchInput v-model="search" placeholder="Search by employee, control no. or type…" class="w-full sm:w-80" />
+      <div class="flex items-center gap-2 text-xs text-gray-500">
+        <span>Show</span>
+        <select v-model="perPage" class="border border-gray-300 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-400">
+          <option v-for="n in PER_PAGE_OPTIONS" :key="n" :value="n">{{ n }}</option>
+        </select>
+        <span>per page</span>
+      </div>
     </div>
 
     <!-- Pending Tab -->
     <div v-show="activeTab === 'pending'">
-      <DataTable :columns="columns" :rows="pending">
+      <DataTable :columns="columns" :rows="paginated">
         <template #actions="{ row }">
           <button @click="openReview(row)" class="text-blue-600 hover:underline text-xs">Review</button>
         </template>
@@ -99,7 +137,7 @@ const currentCredits = computed(() => modalTarget.value?.credits || null)
 
     <!-- Approved Tab -->
     <div v-show="activeTab === 'approved'">
-      <DataTable :columns="approvedColumns" :rows="approved">
+      <DataTable :columns="approvedColumns" :rows="paginated">
         <template #cell-noofdays="{ row }">
           <StatusBadge status="Approved" color="green" />
         </template>
@@ -109,12 +147,16 @@ const currentCredits = computed(() => modalTarget.value?.credits || null)
 
     <!-- Declined Tab -->
     <div v-show="activeTab === 'declined'">
-      <DataTable :columns="columns" :rows="declined">
+      <DataTable :columns="columns" :rows="paginated">
         <template #cell-noofdays="{ row }">
           <StatusBadge status="Declined" color="red" />
         </template>
         <template #empty>No declined leaves.</template>
       </DataTable>
+    </div>
+
+    <div class="mt-4">
+      <Pagination :currentPage="currentPage" :totalPages="totalPages" :totalItems="filtered.length" @update:currentPage="currentPage = $event" />
     </div>
 
     <!-- Review Modal -->
