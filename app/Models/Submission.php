@@ -2,9 +2,7 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Model;
-
-class Submission extends Model
+class Submission extends TenantModel
 {
     protected $table = 'submissions';
     public    $timestamps = false;

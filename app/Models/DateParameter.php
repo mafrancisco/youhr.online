@@ -2,9 +2,7 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Model;
-
-class DateParameter extends Model
+class DateParameter extends TenantModel
 {
     protected $table      = 'dateparameters';
     public    $timestamps = false;

@@ -2,10 +2,9 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-class GatePass extends Model
+class GatePass extends TenantModel
 {
     protected $table = 'gatepass';
     public    $timestamps = false;

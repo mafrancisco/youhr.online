@@ -2,10 +2,9 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-class BiometricSyncHistory extends Model
+class BiometricSyncHistory extends TenantModel
 {
     protected $fillable = [
         'device_id', 'type', 'status', 'records_fetched',

@@ -2,10 +2,9 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-class BiometricLog extends Model
+class BiometricLog extends TenantModel
 {
     protected $fillable = [
         'device_id', 'device_user_id', 'timestamp',

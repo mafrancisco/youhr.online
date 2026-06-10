@@ -2,10 +2,9 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-class BiometricEmployeeMapping extends Model
+class BiometricEmployeeMapping extends TenantModel
 {
     protected $fillable = ['device_user_id', 'badge_id'];
 

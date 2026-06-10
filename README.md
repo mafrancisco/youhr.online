@@ -61,6 +61,18 @@ In order to ensure that the Laravel community is welcoming to all, please review
 
 If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
 
+## Google OAuth Setup
+
+This application uses Google sign-in for company onboarding and landlord admin access.
+
+Set these environment variables in your `.env` file:
+
+- `GOOGLE_CLIENT_ID`
+- `GOOGLE_CLIENT_SECRET`
+- `GOOGLE_REDIRECT_URI=http://localhost:8082/auth/google/callback`
+
+In Google Cloud Console, register the same callback URL in the OAuth client credentials. The app will refuse to start the Google redirect flow until the client ID and client secret are present.
+
 ## License
 
 The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).

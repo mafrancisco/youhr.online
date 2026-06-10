@@ -4,6 +4,7 @@ namespace App\Http\Middleware;
 
 use App\Models\GatePass;
 use App\Models\Leave;
+use App\Models\SaaS\Company;
 use App\Models\Setting;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
@@ -45,10 +46,34 @@ class HandleInertiaRequests extends Middleware
             'appName' => config('app.name'),
 
             'settings' => function () {
+                $tenantCompany = app()->bound('currentCompany') ? app('currentCompany') : null;
+                if (!$tenantCompany) {
+                    return [
+                        'system_name' => config('app.name', 'DTR SaaS'),
+                        'logo_url' => null,
+                    ];
+                }
+
                 $s = Setting::current();
                 return [
                     'system_name' => $s->system_name,
                     'logo_url'    => $s->logoUrl(),
+                ];
+            },
+
+            'company' => function () {
+                /** @var Company|null $company */
+                $company = app()->bound('currentCompany') ? app('currentCompany') : null;
+
+                if (!$company) {
+                    return null;
+                }
+
+                return [
+                    'id' => $company->id,
+                    'name' => $company->name,
+                    'slug' => $company->slug,
+                    'licensed' => $company->hasActiveLicense(),
                 ];
             },
         ]);

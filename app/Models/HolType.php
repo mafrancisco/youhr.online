@@ -2,9 +2,7 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Model;
-
-class HolType extends Model
+class HolType extends TenantModel
 {
     protected $table    = 'holtype';
     public    $timestamps = false;

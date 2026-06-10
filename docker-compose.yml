@@ -59,6 +59,17 @@ services:
       retries: 12
       start_period: 30s
 
+  # ── Mailpit (email testing) ───────────────────────────────────────
+  mailpit:
+    image: axllent/mailpit
+    container_name: ironone_mailpit
+    restart: unless-stopped
+    ports:
+      - "8025:8025"
+      - "1025:1025"
+    networks:
+      - ironone
+
 networks:
   ironone:
     driver: bridge

@@ -20,19 +20,42 @@ use App\Http\Controllers\Admin\LeaveTypeController;
 use App\Http\Controllers\Admin\SettingController;
 use App\Http\Controllers\Admin\TimeDetectionController;
 use App\Http\Controllers\Biometric\BiometricDeviceController;
+use App\Http\Controllers\SaaS\CompanyOnboardingController;
+use App\Http\Controllers\SaaS\LicenseActivationController;
+use App\Http\Controllers\Landlord\AuthController as LandlordAuthController;
+use App\Http\Controllers\Landlord\CompanyController as LandlordCompanyController;
+use App\Http\Controllers\Landlord\DashboardController as LandlordDashboardController;
+use App\Http\Controllers\Landlord\LicenseController as LandlordLicenseController;
 use App\Http\Controllers\Users\UserController;
 use Illuminate\Support\Facades\Route;
 
 // Guest
 Route::middleware('guest')->group(function () {
-    Route::get('/',        [AuthController::class, 'showLogin'])->name('login');
-    Route::post('/login',  [AuthController::class, 'login'])->name('login.submit');
+    Route::get('/', [CompanyOnboardingController::class, 'showLogin'])->name('login');
+    Route::post('/login', [CompanyOnboardingController::class, 'loginWithCredentials'])->name('login.credentials');
+    Route::post('/login/google', [CompanyOnboardingController::class, 'startCompanyLogin'])->name('login.submit');
+
+    Route::get('/register-company', [CompanyOnboardingController::class, 'showCompanyRegistration'])->name('register.company');
+    Route::post('/register-company', [CompanyOnboardingController::class, 'startCompanyRegistration'])->name('register.company.submit');
+
+    Route::get('/auth/google/redirect', [CompanyOnboardingController::class, 'redirectToGoogle'])->name('auth.google.redirect');
+    Route::get('/auth/google/callback', [CompanyOnboardingController::class, 'handleGoogleCallback'])->name('auth.google.callback');
+
+    Route::get('/landlord/login', [LandlordAuthController::class, 'showLogin'])->name('landlord.login');
+    Route::get('/landlord/auth/google/redirect', [LandlordAuthController::class, 'redirectToGoogle'])->name('landlord.auth.redirect');
+    Route::get('/landlord/auth/google/callback', [LandlordAuthController::class, 'handleGoogleCallback'])->name('landlord.auth.callback');
 });
 
-// Authenticated
-Route::middleware('auth')->group(function () {
+// Authenticated (with tenant context)
+Route::middleware(['auth', 'tenant'])->group(function () {
 
     Route::post('/logout',    [AuthController::class, 'logout'])->name('logout');
+
+    Route::get('/license/activate', [LicenseActivationController::class, 'show'])->name('license.show');
+    Route::post('/license/activate', [LicenseActivationController::class, 'activate'])->name('license.activate');
+
+    Route::middleware('licensed')->group(function () {
+
     Route::get('/dashboard',  [DashboardController::class, 'index'])->name('dashboard');
 
     // HR Only
@@ -142,4 +165,14 @@ Route::middleware('auth')->group(function () {
 
     // Any authenticated user
     Route::get('/dtr/download',                     [DTRReportController::class, 'individual'])->name('dtr.download');
+    });
+});
+
+Route::prefix('landlord')->middleware('landlord')->group(function () {
+    Route::get('/', [LandlordDashboardController::class, 'index'])->name('landlord.dashboard');
+    Route::post('/companies/{company}/status', [LandlordCompanyController::class, 'update'])->name('landlord.companies.status');
+    Route::post('/companies/{company}/licenses', [LandlordLicenseController::class, 'generate'])->name('landlord.companies.licenses.generate');
+    Route::post('/licenses/{license}/activate', [LandlordLicenseController::class, 'activate'])->name('landlord.licenses.activate');
+    Route::post('/licenses/{license}/suspend', [LandlordLicenseController::class, 'suspend'])->name('landlord.licenses.suspend');
+    Route::post('/logout', [LandlordAuthController::class, 'logout'])->name('landlord.logout');
 });

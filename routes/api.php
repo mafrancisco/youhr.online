@@ -24,7 +24,7 @@ Route::prefix('v1')->group(function () {
     Route::post('/auth/login', [V1\AuthController::class, 'login']);
 
     // Authenticated routes
-    Route::middleware('auth:sanctum')->group(function () {
+    Route::middleware(['auth:sanctum', 'tenant', 'licensed'])->group(function () {
 
         // Auth
         Route::post('/auth/logout', [V1\AuthController::class, 'logout']);

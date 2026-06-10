@@ -2,9 +2,7 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Model;
-
-class Attendance extends Model
+class Attendance extends TenantModel
 {
     protected $table = 'attendance';
     public    $timestamps = false;

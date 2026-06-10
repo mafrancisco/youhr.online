@@ -2,9 +2,7 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Model;
-
-class EmployeeStatus extends Model
+class EmployeeStatus extends TenantModel
 {
     protected $table    = 'empstatus';
     public    $timestamps = false;

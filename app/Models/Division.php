@@ -2,11 +2,10 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-class Division extends Model
+class Division extends TenantModel
 {
     protected $table    = 'divisions';
     protected $fillable = ['division_name', 'division_chief'];

@@ -2,11 +2,10 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 
-class BiometricDeviceUser extends Model
+class BiometricDeviceUser extends TenantModel
 {
     protected $fillable = [
         'device_id', 'uid', 'user_id', 'name', 'role', 'privilege',

@@ -13,12 +13,23 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware) {
         $middleware->web(append: [
+            \App\Http\Middleware\ResolveTenantContext::class,
             \App\Http\Middleware\HandleInertiaRequests::class,
-            \App\Http\Middleware\CheckInstalled::class,
+        ]);
+        $middleware->api(append: [
+            \App\Http\Middleware\ResolveTenantContext::class,
+        ]);
+        // Ensure tenant context is resolved before auth tries to deserialize the user
+        $middleware->priority([
+            \App\Http\Middleware\ResolveTenantContext::class,
+            \Illuminate\Auth\Middleware\Authenticate::class,
         ]);
         $middleware->alias([
             'hr'       => \App\Http\Middleware\EnsureIsHR::class,
             'employee' => \App\Http\Middleware\EnsureIsEmployee::class,
+            'tenant'   => \App\Http\Middleware\RequireTenantContext::class,
+            'licensed' => \App\Http\Middleware\EnsureTenantLicensed::class,
+            'landlord' => \App\Http\Middleware\EnsureIsLandlordAdmin::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {

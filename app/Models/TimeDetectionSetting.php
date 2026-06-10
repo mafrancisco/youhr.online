@@ -2,9 +2,7 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Model;
-
-class TimeDetectionSetting extends Model
+class TimeDetectionSetting extends TenantModel
 {
     protected $fillable = [
         'punch_type', 'label', 'before_minutes', 'after_minutes', 'pick_rule',

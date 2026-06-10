@@ -166,6 +166,16 @@ class BiometricDeviceController extends Controller
             'end_date'   => ['required', 'date_format:Y-m-d', 'after_or_equal:start_date'],
         ]);
 
+        // Step 0: Clear existing biometric logs before fresh sync
+        \App\Models\BiometricLog::where('device_id', $device->id)->delete();
+
+        // Step 0.5: Delete attendance_clean records within the date range
+        \Illuminate\Support\Facades\DB::statement("
+            DELETE FROM attendance_clean
+            WHERE STR_TO_DATE(AttDate, '%m/%d/%Y')
+                  BETWEEN STR_TO_DATE(?, '%Y-%m-%d') AND STR_TO_DATE(?, '%Y-%m-%d')
+        ", [$request->start_date, $request->end_date]);
+
         // Step 1: Sync raw logs from device
         $syncResult = $this->zkService->syncLogs($device);
 

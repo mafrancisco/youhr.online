@@ -3,9 +3,7 @@
 namespace App\Models;
 
 use Carbon\Carbon;
-use Illuminate\Database\Eloquent\Model;
-
-class Schedule extends Model
+class Schedule extends TenantModel
 {
     protected $table = 'schedule';
     public    $timestamps = false;

@@ -2,10 +2,9 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-class LeaveCredit extends Model
+class LeaveCredit extends TenantModel
 {
     protected $table      = 'lcredits';
     public    $timestamps = false;

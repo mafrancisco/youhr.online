@@ -2,10 +2,9 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-class BiometricDevice extends Model
+class BiometricDevice extends TenantModel
 {
     protected $fillable = [
         'name', 'model', 'ip_address', 'port', 'connection_type',

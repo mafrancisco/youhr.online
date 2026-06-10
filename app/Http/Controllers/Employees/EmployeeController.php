@@ -98,7 +98,7 @@ class EmployeeController extends Controller
 
     public function reactivate(Employee $emp)
     {
-        $emp->update(['status1' => 'Active', 'date_deact' => null]);
+        $emp->update(['status1' => 'Active', 'date_deact' => '']);
         return back()->with('success', 'Employee reactivated.');
     }
 }
