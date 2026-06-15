@@ -92,6 +92,12 @@ class CompanyOnboardingController extends Controller
             return back()->withErrors(['username' => 'Invalid username or password.']);
         }
 
+        // Restore the landlord DB connection before touching the session: the
+        // session driver follows database.default, and the next request's
+        // StartSession middleware reads it back before ResolveTenantContext
+        // switches connections again.
+        $this->tenants->restoreDefaultConnection();
+
         // Login
         Auth::login($user, true);
         $request->session()->regenerate();
@@ -210,6 +216,12 @@ class CompanyOnboardingController extends Controller
             ->where('google_email', $googleUser->email)
             ->firstOrFail();
 
+        // Restore the landlord DB connection before touching the session: the
+        // session driver follows database.default, and the next request's
+        // StartSession middleware reads it back before ResolveTenantContext
+        // switches connections again.
+        $this->tenants->restoreDefaultConnection();
+
         Auth::login($user, true);
         $request->session()->regenerate();
         $request->session()->put($this->tenants->companySessionKey(), $company->id);
@@ -260,6 +272,12 @@ class CompanyOnboardingController extends Controller
                 'auth_provider' => 'google',
             ]);
         }
+
+        // Restore the landlord DB connection before touching the session: the
+        // session driver follows database.default, and the next request's
+        // StartSession middleware reads it back before ResolveTenantContext
+        // switches connections again.
+        $this->tenants->restoreDefaultConnection();
 
         Auth::login($user, true);
         $request->session()->regenerate();
