@@ -31,7 +31,7 @@ const pendingGP = computed(() => page.props.pendingGatePasses ?? 0)
       </div>
       <div class="bg-white rounded-xl shadow p-6">
         <p class="text-sm text-gray-500">System</p>
-        <p class="text-xs text-gray-400 mt-2">IronOne DTR System</p>
+        <p class="text-xs text-gray-400 mt-2">Your-HR DTR System</p>
       </div>
     </div>
   </AppLayout>

@@ -11,7 +11,7 @@ return new class extends Migration
     {
         Schema::create('settings', function (Blueprint $table) {
             $table->id();
-            $table->string('system_name', 100)->default('IronOne DTR');
+            $table->string('system_name', 100)->default('Your-HR DTR');
             $table->string('company_address', 255)->default('');
             $table->string('authorized_signatory', 100)->default('');
             $table->string('authorized_signatory_position', 100)->default('');
@@ -21,7 +21,7 @@ return new class extends Migration
         // Seed the single row
         DB::table('settings')->insert([
             'id'                             => 1,
-            'system_name'                    => 'IronOne DTR',
+            'system_name'                    => 'Your-HR DTR',
             'company_address'                => '',
             'authorized_signatory'           => '',
             'authorized_signatory_position'  => '',

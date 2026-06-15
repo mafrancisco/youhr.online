@@ -37,7 +37,7 @@
 document.addEventListener('DOMContentLoaded', function() {
     const el = document.getElementById('summary-content');
     const items = [
-        ['System Name', sessionStorage.getItem('app_name') || 'IronOne DTR'],
+        ['System Name', sessionStorage.getItem('app_name') || 'Your-HR DTR'],
         ['URL', sessionStorage.getItem('app_url') || 'http://localhost'],
         ['Timezone', sessionStorage.getItem('timezone') || 'Asia/Manila'],
         ['Database', (sessionStorage.getItem('db_username') || 'root') + '@' + (sessionStorage.getItem('db_host') || '127.0.0.1') + '/' + (sessionStorage.getItem('db_database') || 'ironone')],

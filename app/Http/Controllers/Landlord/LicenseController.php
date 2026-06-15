@@ -37,8 +37,12 @@ class LicenseController extends Controller
         ]);
 
         if ($targetEmail) {
-            Notification::route('mail', $targetEmail)
-                ->notify(new LicenseKeyGenerated($company, $plain, $data['expires_at'] ?? null));
+            try {
+                Notification::route('mail', $targetEmail)
+                    ->notify(new LicenseKeyGenerated($company, $plain, $data['expires_at'] ?? null));
+            } catch (\Throwable) {
+                // Email sending failed silently — key is still displayed in flash message
+            }
         }
 
         LandlordAuditLog::create([

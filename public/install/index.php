@@ -1,6 +1,6 @@
 <?php
 /**
- * IronOne DTR - Deployment Wizard
+ * Your-HR DTR - Deployment Wizard
  * 
  * This installer runs independently of Laravel.
  * It checks requirements, configures the system, and sets up the database.

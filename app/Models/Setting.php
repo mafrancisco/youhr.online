@@ -17,7 +17,7 @@ class Setting extends TenantModel
     public static function current(): self
     {
         return self::firstOrCreate(['id' => 1], [
-            'system_name'                    => 'IronOne DTR',
+            'system_name'                    => 'Your-HR DTR',
             'company_address'                => '',
             'authorized_signatory'           => '',
             'authorized_signatory_position'  => '',

@@ -65,7 +65,7 @@ function removeLogo() {
           <label class="block text-sm font-medium text-gray-700 mb-1">System Name</label>
           <input v-model="form.system_name" type="text" required
             class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
-            placeholder="e.g. IronOne DTR" />
+            placeholder="e.g. Your-HR DTR" />
           <p v-if="form.errors.system_name" class="mt-1 text-xs text-red-600">{{ form.errors.system_name }}</p>
         </div>
 

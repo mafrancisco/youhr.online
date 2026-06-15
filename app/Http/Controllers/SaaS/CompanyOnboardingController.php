@@ -52,7 +52,8 @@ class CompanyOnboardingController extends Controller
         ]);
         $request->session()->forget('saas.login_email');
 
-        return redirect()->route('auth.google.redirect');
+        // Redirect directly to Google (not through another route)
+        return $this->redirectToGoogle();
     }
 
     // ─── Login with Username & Password ─────────────────────────────────────
@@ -122,7 +123,8 @@ class CompanyOnboardingController extends Controller
         $request->session()->put('saas.login_company_id', $company->id);
         $request->session()->forget('saas.registration');
 
-        return redirect()->route('auth.google.redirect');
+        // Redirect directly to Google
+        return $this->redirectToGoogle();
     }
 
     // ─── Google OAuth ────────────────────────────────────────────────────────
@@ -130,17 +132,17 @@ class CompanyOnboardingController extends Controller
     public function redirectToGoogle()
     {
         if (!config('services.google.client_id') || !config('services.google.client_secret')) {
-            return redirect()->route('login')->withErrors([
+            return redirect()->route('register.company')->withErrors([
                 'company_email' => 'Google OAuth is not configured. Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in .env.',
             ]);
         }
 
-        return Inertia::location(
-            $this->socialite->driver('google')
-                ->scopes(['openid', 'profile', 'email'])
-                ->redirect()
-                ->getTargetUrl()
-        );
+        $url = $this->socialite->driver('google')
+            ->scopes(['openid', 'profile', 'email'])
+            ->redirect()
+            ->getTargetUrl();
+
+        return Inertia::location($url);
     }
 
     public function handleGoogleCallback(Request $request)
