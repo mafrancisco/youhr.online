@@ -31,7 +31,13 @@ class DTRPdfService
     // -----------------------------------------------------------------------
     // Bulk PDF — 2 employees per page (mirrors download.php)
     // -----------------------------------------------------------------------
-    public function bulk(string $startDate, string $endDate, int $empStatus): string
+    /**
+     * Render one PDF covering multiple employees, two per page.
+     *
+     * Passing $badgeIDs restricts output to those employees; otherwise every
+     * employee with the given status is included.
+     */
+    public function bulk(string $startDate, string $endDate, int $empStatus, array $badgeIDs = []): string
     {
         $mpdf = $this->makeMpdf();
 
@@ -42,10 +48,19 @@ class DTRPdfService
         $fname    = ($empStatus == 1) ? 'Regular Employees' : 'Contractual Employees';
         $filename = $fname . ' DTR-' . $attRange . '.pdf';
 
-        $employees = DB::select(
-            "SELECT badgeID, empName, empHead FROM employees WHERE empStatus = ? ORDER BY empName",
-            [$empStatus]
-        );
+        if (!empty($badgeIDs)) {
+            $placeholders = implode(',', array_fill(0, count($badgeIDs), '?'));
+
+            $employees = DB::select(
+                "SELECT badgeID, empName, empHead FROM employees WHERE badgeID IN ({$placeholders}) ORDER BY empName",
+                array_values($badgeIDs)
+            );
+        } else {
+            $employees = DB::select(
+                "SELECT badgeID, empName, empHead FROM employees WHERE empStatus = ? ORDER BY empName",
+                [$empStatus]
+            );
+        }
 
         $counter  = 0;
         $pageHtml = '<table width="100%"><tr valign="top">';

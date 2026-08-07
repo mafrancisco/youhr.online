@@ -30,19 +30,42 @@ class DTRReportController extends Controller
             'start_date' => ['required', 'date_format:Y-m-d'],
             'end_date'   => ['required', 'date_format:Y-m-d', 'after_or_equal:start_date'],
             'emp_status' => ['required', 'integer', 'in:1,2'],
+            'badges'     => ['nullable', 'string'],
         ]);
 
         $startDate = $request->start_date;
         $endDate   = $request->end_date;
         $empStatus = (int) $request->emp_status;
 
+        // An explicit selection produces a single combined PDF for just those
+        // employees. Opening one download per employee is not viable: browsers block
+        // all but the first popup when several are triggered from one click.
+        $badgeIDs = array_values(array_filter(
+            array_map('trim', explode(',', (string) $request->get('badges', ''))),
+            fn ($b) => $b !== ''
+        ));
+
+        if (!empty($badgeIDs)) {
+            // Restrict to badges that exist, so a tampered list cannot probe others.
+            $badgeIDs = Employee::whereIn('badgeID', $badgeIDs)->pluck('badgeID')->all();
+
+            if (empty($badgeIDs)) {
+                return back()->with('error', 'None of the selected employees could be found.');
+            }
+        }
+
         $start_date = date('F j', strtotime($startDate));
         $end_date   = date('F j, Y', strtotime($endDate));
         $attRange   = $start_date . '-' . $end_date;
-        $fname      = ($empStatus == 1) ? 'Regular Employees' : 'Contractual Employees';
-        $filename   = $fname . ' DTR-' . $attRange . '.pdf';
 
-        $content = $this->pdf->bulk($startDate, $endDate, $empStatus);
+        if (!empty($badgeIDs)) {
+            $filename = 'Selected Employees DTR-' . $attRange . '.pdf';
+        } else {
+            $fname    = ($empStatus == 1) ? 'Regular Employees' : 'Contractual Employees';
+            $filename = $fname . ' DTR-' . $attRange . '.pdf';
+        }
+
+        $content = $this->pdf->bulk($startDate, $endDate, $empStatus, $badgeIDs);
 
         return response()->streamDownload(
             fn() => print($content),

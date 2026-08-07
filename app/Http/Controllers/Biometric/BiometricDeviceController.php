@@ -3,8 +3,6 @@
 namespace App\Http\Controllers\Biometric;
 
 use App\Http\Controllers\Controller;
-use App\Jobs\SyncBiometricLogsJob;
-use App\Jobs\SyncBiometricUsersJob;
 use App\Models\BiometricDevice;
 use App\Models\BiometricDeviceUser;
 use App\Models\BiometricEmployeeMapping;
@@ -15,6 +13,7 @@ use App\Services\AttendanceComputationService;
 use App\Services\BiometricLogProcessorService;
 use App\Services\ZKTecoService;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -48,12 +47,18 @@ class BiometricDeviceController extends Controller
         $data = $request->validate([
             'name'            => ['required', 'string', 'max:100'],
             'model'           => ['required', 'string', 'max:50'],
-            'ip_address'      => ['required', 'ip', 'unique:biometric_devices,ip_address'],
+            // Unique rules are bound to the model so they resolve against the tenant
+            // connection rather than whatever `database.default` currently points at.
+            'serial_number'   => ['required', 'string', 'max:50', Rule::unique(BiometricDevice::class, 'serial_number')],
+            'ip_address'      => ['required', 'ip', Rule::unique(BiometricDevice::class, 'ip_address')],
             'port'            => ['required', 'integer', 'min:1', 'max:65535'],
             'connection_type' => ['required', 'in:LAN,WLAN'],
             'location'        => ['nullable', 'string', 'max:150'],
             'remarks'         => ['nullable', 'string', 'max:500'],
         ]);
+
+        $data['location'] = $data['location'] ?? '';
+        $data['remarks']  = $data['remarks'] ?? '';
 
         BiometricDevice::create($data);
 
@@ -68,13 +73,17 @@ class BiometricDeviceController extends Controller
         $data = $request->validate([
             'name'            => ['required', 'string', 'max:100'],
             'model'           => ['required', 'string', 'max:50'],
-            'ip_address'      => ['required', 'ip', "unique:biometric_devices,ip_address,{$device->id}"],
+            'serial_number'   => ['required', 'string', 'max:50', Rule::unique(BiometricDevice::class, 'serial_number')->ignore($device->id)],
+            'ip_address'      => ['required', 'ip', Rule::unique(BiometricDevice::class, 'ip_address')->ignore($device->id)],
             'port'            => ['required', 'integer', 'min:1', 'max:65535'],
             'connection_type' => ['required', 'in:LAN,WLAN'],
             'location'        => ['nullable', 'string', 'max:150'],
             'status'          => ['required', 'in:active,inactive'],
             'remarks'         => ['nullable', 'string', 'max:500'],
         ]);
+
+        $data['location'] = $data['location'] ?? '';
+        $data['remarks']  = $data['remarks'] ?? '';
 
         $device->update($data);
 
@@ -166,33 +175,54 @@ class BiometricDeviceController extends Controller
             'end_date'   => ['required', 'date_format:Y-m-d', 'after_or_equal:start_date'],
         ]);
 
-        // Step 0: Clear existing biometric logs before fresh sync
-        \App\Models\BiometricLog::where('device_id', $device->id)->delete();
+        // Fetching logs, rewriting attendance_clean and recomputing the DTR for a
+        // date range legitimately exceeds the default 30s limit. The queue driver is
+        // `sync`, so dispatching would run inline and not help.
+        $this->extendExecutionTime();
 
-        // Step 0.5: Delete attendance_clean records within the date range
-        \Illuminate\Support\Facades\DB::statement("
-            DELETE FROM attendance_clean
-            WHERE STR_TO_DATE(AttDate, '%m/%d/%Y')
-                  BETWEEN STR_TO_DATE(?, '%Y-%m-%d') AND STR_TO_DATE(?, '%Y-%m-%d')
-        ", [$request->start_date, $request->end_date]);
-
-        // Step 1: Sync raw logs from device
+        // Try to pull from the device first. Nothing destructive happens before this
+        // succeeds — an earlier version deleted the stored logs up front and then
+        // aborted when the device could not be reached, discarding punches that had
+        // already arrived by push.
         $syncResult = $this->zkService->syncLogs($device);
+        $polled = $syncResult->status !== 'failed';
 
-        if ($syncResult->status === 'failed') {
-            return back()->with('error', 'Sync failed: ' . $syncResult->error_message);
+        // Push-mode (ADMS) devices never answer polling; they deliver punches to this
+        // server on their own schedule. Failing to poll such a device is therefore not
+        // an error as long as we are holding logs it already sent.
+        $storedLogs = \App\Models\BiometricLog::where('device_id', $device->id)->count();
+
+        if (!$polled && $storedLogs === 0) {
+            return back()->with('error',
+                'Could not reach the device, and no pushed logs are waiting to process. ' .
+                'If this device uses ADMS/push mode, confirm its server address and port point to this application.'
+            );
         }
 
-        // Step 2: Process synced logs directly into attendance_clean
-        // device_user_id IS the badgeID — no mapping needed
-        $processResult = $this->processor->process($request->start_date, $request->end_date, false);
+        // Rebuild the attendance range from the logs we hold. Stored logs are kept:
+        // polling inserts are de-duplicated on (device, user, timestamp, punch type),
+        // so re-syncing will not create duplicates, and keeping them means a failed
+        // poll can never destroy push-delivered punches.
+        //
+        // Only days that actually have logs are rewritten. classifyAndWrite already
+        // does a DELETE + INSERT per badge and date, and seedDateRange skips rows that
+        // already exist. Clearing the whole range here instead would wipe attendance
+        // that came from a file import or a manual adjustment and never rebuild it,
+        // since those days have no biometric logs to rebuild from.
+        $processResult = \Illuminate\Support\Facades\DB::transaction(function () use ($request) {
+            // device_user_id IS the badgeID — no mapping needed
+            return $this->processor->process($request->start_date, $request->end_date, false, true);
+        });
 
-        // Step 3: Run DTR computation
+        // Run DTR computation
         if ($processResult['processed'] > 0) {
             $this->computer->compute($request->start_date, $request->end_date);
         }
 
-        $msg = "Synced {$syncResult->records_new} new logs. {$processResult['message']}";
+        $msg = $polled
+            ? "Synced {$syncResult->records_new} new logs. {$processResult['message']}"
+            : "Device did not answer polling (expected for ADMS/push devices). Processed {$storedLogs} pushed log(s). {$processResult['message']}";
+
         if ($processResult['processed'] > 0) {
             $msg .= ' DTR computed.';
         }
@@ -201,13 +231,71 @@ class BiometricDeviceController extends Controller
     }
 
     /**
-     * Sync users from device (queued).
+     * Allow long-running device operations to finish.
+     *
+     * Syncing pulls every log off the device, rewrites attendance_clean and
+     * recomputes the DTR for the range, which can exceed PHP's default 30s limit
+     * on larger date ranges. Moving this to a queue worker would be the better
+     * long-term fix; QUEUE_CONNECTION is currently `sync`, so dispatching a job
+     * would execute inline and hit the same limit.
+     */
+    private function extendExecutionTime(int $seconds = 300): void
+    {
+        if (function_exists('set_time_limit')) {
+            @set_time_limit($seconds);
+        }
+    }
+
+    /**
+     * Sync users from the device.
+     *
+     * Polling devices are queried directly. Push-mode (ADMS) devices never answer
+     * polling, so for those a USERINFO request is queued instead and the device
+     * delivers its users the next time it polls for commands.
      */
     public function syncUsers(BiometricDevice $device)
     {
-        SyncBiometricUsersJob::dispatch($device->id);
+        $this->extendExecutionTime();
 
-        return back()->with('success', 'User sync started. This may take a moment.');
+        $history = $this->zkService->syncUsers($device);
+
+        if ($history->status !== 'failed') {
+            return back()->with('success',
+                "Synced {$history->records_new} new user(s), {$history->records_skipped} unchanged."
+            );
+        }
+
+        // Polling failed. If we know the serial we can ask a push-mode device to send
+        // its user records the next time it checks in for commands.
+        if (!empty($device->serial_number)) {
+            // This firmware ignores an empty PIN, so each PIN must be requested
+            // individually. Ask for everyone who has punched on the device, plus every
+            // employee on record, since device_user_id is matched to badgeID directly.
+            $pins = array_merge(
+                \App\Models\BiometricLog::where('device_id', $device->id)
+                    ->distinct()->pluck('device_user_id')->all(),
+                \App\Models\Employee::pluck('badgeID')->all(),
+            );
+
+            $queued = AdmsController::queueUserInfoRequests($device->serial_number, $pins);
+
+            if ($queued === 0) {
+                return back()->with('error',
+                    'Device did not answer polling, and there are no known device IDs to request. ' .
+                    'Add employees or wait for the first punch, then try again.'
+                );
+            }
+
+            return back()->with('success',
+                "Device did not answer polling (expected for ADMS/push devices). " .
+                "Requested {$queued} user record(s) — they will appear as the device checks in."
+            );
+        }
+
+        return back()->with('error',
+            'Could not reach the device, and it has no serial number on record, so a push request cannot be sent. ' .
+            'Add the serial number to enable ADMS/push support.'
+        );
     }
 
     /**
@@ -220,7 +308,11 @@ class BiometricDeviceController extends Controller
             'end_date'   => ['required', 'date_format:Y-m-d', 'after_or_equal:start_date'],
         ]);
 
-        $result = $this->processor->process($request->start_date, $request->end_date, true);
+        $this->extendExecutionTime();
+
+        // Rebuild from every stored log in the range, not just unseen ones, so this
+        // action can regenerate attendance after a schedule or rule change.
+        $result = $this->processor->process($request->start_date, $request->end_date, true, true);
 
         if ($result['processed'] > 0) {
             $this->computer->compute($request->start_date, $request->end_date);

@@ -25,6 +25,7 @@ const testResult = ref(null)
 const form = useForm({
   name:            '',
   model:           'ZK IN05-A',
+  serial_number:   '',
   ip_address:      '',
   port:            4370,
   connection_type: 'LAN',
@@ -54,6 +55,7 @@ function openEdit(device) {
   form.clearErrors()
   form.name            = device.name
   form.model           = device.model
+  form.serial_number   = device.serial_number || ''
   form.ip_address      = device.ip_address
   form.port            = device.port
   form.connection_type = device.connection_type
@@ -178,8 +180,11 @@ watch([search, perPage], () => { currentPage.value = 1 })
           <div class="grid grid-cols-2 gap-4">
             <FormInput label="Device Name" v-model="form.name" :error="form.errors.name" required />
             <SelectInput label="Model" v-model="form.model" :error="form.errors.model"
-              :options="['ZK IN05-A', 'ZK F18', 'ZK K40', 'ZK MB20', 'ZK iClock 880', 'Other']" />
+              :options="['ZK IN05-A', 'ZK F18', 'ZK K40', 'ZK MB20', 'ZK MB460 Plus', 'ZK iClock 880', 'Other']" />
           </div>
+
+          <FormInput label="Serial Number" v-model="form.serial_number" :error="form.errors.serial_number"
+            placeholder="e.g. ABCD123456789" required />
 
           <div class="grid grid-cols-3 gap-4">
             <div class="col-span-2">

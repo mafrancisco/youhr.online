@@ -2,6 +2,7 @@
 
 use App\Models\SaaS\Company;
 use App\Models\SaaS\CompanyLicense;
+use App\Services\SaaS\TenantManager;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Str;
@@ -9,6 +10,53 @@ use Illuminate\Support\Str;
 Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
 })->purpose('Display an inspiring quote');
+
+Artisan::command('tenants:migrate {--company=} {--status}', function (TenantManager $tenants) {
+    $query = Company::query()->orderBy('id');
+
+    if ($slug = $this->option('company')) {
+        $query->where('slug', Str::lower((string) $slug));
+    }
+
+    $companies = $query->get();
+
+    if ($companies->isEmpty()) {
+        $this->error('No matching companies found.');
+        return self::FAILURE;
+    }
+
+    $failed = [];
+
+    try {
+        foreach ($companies as $company) {
+            $this->line("── {$company->name} ({$company->database})");
+
+            try {
+                $tenants->switchToCompany($company);
+
+                Artisan::call($this->option('status') ? 'migrate:status' : 'migrate', array_filter([
+                    '--database' => $tenants->connectionName(),
+                    '--force'    => $this->option('status') ? null : true,
+                ]));
+
+                $this->line(trim(Artisan::output()));
+            } catch (\Throwable $e) {
+                $failed[] = $company->slug;
+                $this->error("   failed: {$e->getMessage()}");
+            }
+        }
+    } finally {
+        $tenants->restoreDefaultConnection();
+    }
+
+    if ($failed) {
+        $this->error('Failed for: ' . implode(', ', $failed));
+        return self::FAILURE;
+    }
+
+    $this->info('Done for ' . $companies->count() . ' tenant(s).');
+    return self::SUCCESS;
+})->purpose('Run migrations across every tenant database');
 
 Artisan::command('saas:license-generate {company_slug} {--email=} {--expires=}', function () {
     $slug = Str::lower((string) $this->argument('company_slug'));

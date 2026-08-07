@@ -1,5 +1,6 @@
 <script setup>
 import { router } from '@inertiajs/vue3'
+import FlashMessage from '@/Components/FlashMessage.vue'
 
 function login() {
   router.visit('/landlord/auth/google/redirect')
@@ -9,6 +10,8 @@ function login() {
 <template>
   <div class="min-h-screen flex items-center justify-center bg-[radial-gradient(circle_at_top,_#f8fafc,_#dbeafe_40%,_#0f172a_100%)] px-4">
     <div class="w-full max-w-md rounded-3xl bg-white/95 backdrop-blur border border-slate-200 shadow-2xl p-8">
+      <FlashMessage />
+
       <p class="text-xs uppercase tracking-[0.35em] text-slate-500">Landlord Console</p>
       <h1 class="mt-3 text-3xl font-semibold text-slate-900">Company & License Admin</h1>
       <p class="mt-2 text-sm text-slate-600">

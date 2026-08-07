@@ -38,8 +38,24 @@ function downloadIndividual(badgeID) {
   window.open(`/dtr/download?badge=${badgeID}&start_date=${startDate.value}&end_date=${endDate.value}`, '_blank')
 }
 
-function downloadSelectedIndividual() {
-  selected.value.forEach(b => downloadIndividual(b))
+/**
+ * Download the checked employees as one combined PDF.
+ *
+ * Opening a separate window per employee does not work: browsers only honour the
+ * first window.open() from a single click and silently block the rest, so only the
+ * first employee was ever downloaded.
+ */
+function downloadSelected() {
+  if (!selected.value.length || !startDate.value || !endDate.value) return
+
+  const params = new URLSearchParams({
+    start_date: startDate.value,
+    end_date:   endDate.value,
+    emp_status: bulkEmpStatus.value,
+    badges:     selected.value.join(','),
+  })
+
+  window.location.href = `/reports/dtr/download?${params.toString()}`
 }
 
 function downloadBulk() {
@@ -79,8 +95,8 @@ function downloadBulk() {
           class="px-4 py-2 bg-blue-700 text-white text-sm rounded-lg hover:bg-blue-800 disabled:opacity-50">
           Bulk PDF (all employees)
         </button>
-        <PrimaryButton :disabled="!selected.length || !startDate || !endDate" @click="downloadSelectedIndividual">
-          Individual PDFs ({{ selected.length }})
+        <PrimaryButton :disabled="!selected.length || !startDate || !endDate" @click="downloadSelected">
+          Download Selected ({{ selected.length }})
         </PrimaryButton>
       </div>
     </div>

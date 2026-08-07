@@ -176,3 +176,15 @@ Route::prefix('landlord')->middleware('landlord')->group(function () {
     Route::post('/licenses/{license}/suspend', [LandlordLicenseController::class, 'suspend'])->name('landlord.licenses.suspend');
     Route::post('/logout', [LandlordAuthController::class, 'logout'])->name('landlord.logout');
 });
+
+// ADMS (ZKTeco push mode). These endpoints cannot carry authentication — the device
+// only presents its serial number — so they are registered only where a device is
+// actually in use. See config/saas.php for the reasoning.
+if (config('saas.adms_enabled')) {
+    Route::prefix('iclock')->withoutMiddleware([\App\Http\Middleware\ResolveTenantContext::class, \Illuminate\Foundation\Http\Middleware\VerifyCsrfToken::class])->group(function () {
+        Route::get('/cdata', [\App\Http\Controllers\Biometric\AdmsController::class, 'handshake']);
+        Route::post('/cdata', [\App\Http\Controllers\Biometric\AdmsController::class, 'receiveData']);
+        Route::get('/getrequest', [\App\Http\Controllers\Biometric\AdmsController::class, 'getRequest']);
+        Route::post('/devicecmd', [\App\Http\Controllers\Biometric\AdmsController::class, 'deviceCmd']);
+    });
+}

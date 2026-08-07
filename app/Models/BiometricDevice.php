@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 class BiometricDevice extends TenantModel
 {
     protected $fillable = [
-        'name', 'model', 'ip_address', 'port', 'connection_type',
+        'name', 'model', 'serial_number', 'ip_address', 'port', 'connection_type',
         'location', 'status', 'remarks', 'last_sync_at', 'is_online',
     ];
 
