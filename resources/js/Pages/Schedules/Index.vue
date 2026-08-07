@@ -92,6 +92,27 @@ function onConfirm() {
   confirmState.value.show = false
 }
 
+function copyMondayTo(targetKeys) {
+  const fields = ['timein', 'breakout', 'breakin', 'timeout', 'crossday']
+  targetKeys.forEach(dayKey => {
+    fields.forEach(field => {
+      form[`${dayKey}_${field}`] = form[`m_${field}`]
+    })
+  })
+}
+
+function copyMonToTueFri() {
+  copyMondayTo(['t', 'w', 'th', 'f'])
+}
+
+function copyMonToTueSat() {
+  copyMondayTo(['t', 'w', 'th', 'f', 'sat'])
+}
+
+function copyMonToTueSun() {
+  copyMondayTo(['t', 'w', 'th', 'f', 'sat', 'sun'])
+}
+
 function activeDays(sched) {
   return DAYS.filter(({ key }) => sched[`${key}_timein`]).map(d => d.label.slice(0, 3)).join(', ')
 }
@@ -165,6 +186,20 @@ watch([search, perPage], () => { currentPage.value = 1 })
           </div>
 
           <div class="overflow-x-auto">
+            <div class="flex flex-wrap gap-2 mb-3">
+              <button type="button" @click="copyMonToTueFri"
+                class="inline-flex items-center px-3 py-1.5 text-xs font-medium rounded bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200 transition">
+                Copy Mon → Tue-Fri
+              </button>
+              <button type="button" @click="copyMonToTueSat"
+                class="inline-flex items-center px-3 py-1.5 text-xs font-medium rounded bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200 transition">
+                Copy Mon → Tue-Sat
+              </button>
+              <button type="button" @click="copyMonToTueSun"
+                class="inline-flex items-center px-3 py-1.5 text-xs font-medium rounded bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200 transition">
+                Copy Mon → Tue-Sun
+              </button>
+            </div>
             <table class="w-full text-xs">
               <thead>
                 <tr class="bg-gray-50 text-gray-500">
