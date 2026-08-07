@@ -19,10 +19,12 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->api(append: [
             \App\Http\Middleware\ResolveTenantContext::class,
         ]);
-        // Ensure tenant context is resolved before auth tries to deserialize the user
+        // Ensure tenant context is resolved before auth and route model binding
         $middleware->priority([
+            \Illuminate\Session\Middleware\StartSession::class,
             \App\Http\Middleware\ResolveTenantContext::class,
             \Illuminate\Auth\Middleware\Authenticate::class,
+            \Illuminate\Routing\Middleware\SubstituteBindings::class,
         ]);
         $middleware->alias([
             'hr'       => \App\Http\Middleware\EnsureIsHR::class,
