@@ -50,6 +50,72 @@ class ZKTecoService
     }
 
     /**
+     * Read attendance from a device without touching the database.
+     *
+     * Used by the on-premise agent, which runs on the tenant's network and has no
+     * access to any tenant database — it only forwards what it reads to the server.
+     * Returns null when the device cannot be reached, distinguishing "unreachable"
+     * from "reachable but empty".
+     *
+     * @return array<int, array{pin:string, timestamp:string, status:int, verify:int}>|null
+     */
+    public function readAttendance(string $ip, int $port = 4370): ?array
+    {
+        if (!$this->isPortReachable($ip, $port)) {
+            return null;
+        }
+
+        $logs = null;
+
+        // Try UDP first (legacy devices), then TCP.
+        try {
+            $zk = new ZKTeco($ip, $port, false, self::UDP_TIMEOUT);
+            if ($zk->connect()) {
+                $logs = $zk->getAttendances();
+                $zk->disconnect();
+            }
+        } catch (\Throwable) {
+            $logs = null;
+        }
+
+        if (!is_array($logs)) {
+            try {
+                $tcp = new ZKTecoTcpClient($ip, $port, self::TCP_TIMEOUT);
+                if ($tcp->connect()) {
+                    $logs = $tcp->getAttendances();
+                    $tcp->disconnect();
+                }
+            } catch (\Throwable) {
+                $logs = null;
+            }
+        }
+
+        if (!is_array($logs)) {
+            return null;
+        }
+
+        $punches = [];
+
+        foreach ($logs as $log) {
+            $pin = (string) ($log['user_id'] ?? '');
+            $ts  = $log['record_time'] ?? null;
+
+            if ($pin === '' || empty($ts)) {
+                continue;
+            }
+
+            $punches[] = [
+                'pin'       => $pin,
+                'timestamp' => (string) $ts,
+                'status'    => (int) ($log['state'] ?? 0),
+                'verify'    => (int) ($log['type'] ?? 0),
+            ];
+        }
+
+        return $punches;
+    }
+
+    /**
      * Test connection to a device.
      */
     public function testConnection(string $ip, int $port = 4370): array

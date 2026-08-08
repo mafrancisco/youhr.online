@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Biometric;
 use App\Http\Controllers\Controller;
 use App\Models\BiometricDevice;
 use App\Models\BiometricLog;
+use App\Services\BiometricLogIngestService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -350,92 +351,18 @@ class AdmsController extends Controller
     /**
      * Process attendance log lines from ADMS push.
      *
-     * ZKTeco ATTLOG lines are tab separated, beginning with the badge ID and
-     * timestamp. The trailing status columns vary between firmware revisions, so
-     * their order is not assumed here — see the punch_type note below.
+     * Parsing, punch-type handling and de-duplication live in
+     * BiometricLogIngestService so that push and agent transports behave alike.
      */
     private function processAttendanceLogs($device, string $content, string $tenantDb): void
     {
-        $lines = array_filter(explode("\n", trim($content)));
-        $processed = 0;
-        $skipped = 0;
+        $result = app(BiometricLogIngestService::class)
+            ->ingestAttlog($device->id, $tenantDb, $content);
 
-        // Raw sample of what the device actually sends, so the trailing status column
-        // order can be confirmed rather than assumed.
-        Log::debug("ADMS ATTLOG raw sample from device #{$device->id}", [
-            'lines' => array_slice(array_map(
-                fn ($l) => str_replace("\t", '<TAB>', trim($l)),
-                $lines
-            ), 0, 5),
-        ]);
-
-        foreach ($lines as $line) {
-            $line = trim($line);
-            if (empty($line)) continue;
-
-            // Tab-separated: badge_id, timestamp, verify_type, inout_state, work_code
-            $parts = preg_split('/\t/', $line);
-
-            if (count($parts) < 2) {
-                $skipped++;
-                continue;
-            }
-
-            $userId = trim($parts[0] ?? '');
-            $timestamp = trim($parts[1] ?? '');
-
-            // Confirmed against this device's raw output:
-            //   [0]=PIN  [1]=timestamp  [2]=status  [3]=verify  [4..]=workcode/reserved
-            //
-            // punch_type is consequential: BiometricLogProcessorService treats 4 as
-            // "OT In" and 5 as "OT Out", and anything else as a regular punch that
-            // PunchClassifierService assigns to in/out/break from the employee's
-            // schedule. Only the documented states 0-5 are meaningful; this firmware
-            // sends 255 when no work state was recorded for the punch, so anything
-            // outside that range becomes a regular punch rather than being trusted
-            // as an attendance state.
-            $rawStatus  = isset($parts[2]) ? (int) trim($parts[2]) : 0;
-            $verifyType = isset($parts[3]) ? (int) trim($parts[3]) : 0;
-
-            $state = ($rawStatus >= 0 && $rawStatus <= 5) ? $rawStatus : 0;
-
-            if (empty($userId) || empty($timestamp)) {
-                $skipped++;
-                continue;
-            }
-
-            try {
-                $ts = Carbon::parse($timestamp);
-            } catch (\Throwable) {
-                $skipped++;
-                continue;
-            }
-
-            // Store log in the tenant's database (prevent duplicates)
-            $exists = DB::connection('mysql')->select(
-                "SELECT id FROM `{$tenantDb}`.`biometric_logs` WHERE `device_id` = ? AND `device_user_id` = ? AND `timestamp` = ? AND `punch_type` = ? LIMIT 1",
-                [$device->id, $userId, $ts, $state]
-            );
-
-            if (empty($exists)) {
-                DB::connection('mysql')->statement(
-                    "INSERT INTO `{$tenantDb}`.`biometric_logs` (`device_id`, `device_user_id`, `timestamp`, `punch_type`, `verify_type`, `is_processed`, `created_at`, `updated_at`) VALUES (?, ?, ?, ?, ?, 0, NOW(), NOW())",
-                    [$device->id, $userId, $ts, $state, $verifyType]
-                );
-                $processed++;
-            } else {
-                $skipped++;
-            }
-
-            Log::debug('ADMS punch stored', [
-                'user'        => $userId,
-                'at'          => (string) $ts,
-                'raw_status'  => $rawStatus,
-                'verify'      => $verifyType,
-                'punch_type'  => $state,
-            ]);
-        }
-
-        Log::info("ADMS: Processed {$processed} logs, skipped {$skipped} for tenant DB {$tenantDb}");
+        Log::info(
+            "ADMS: Processed {$result['stored']} logs, skipped "
+            . ($result['duplicates'] + $result['invalid'])
+            . " for tenant DB {$tenantDb}"
+        );
     }
 }

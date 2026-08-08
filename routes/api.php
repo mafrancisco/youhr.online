@@ -52,5 +52,16 @@ Route::prefix('v1')->group(function () {
         Route::middleware('hr')->group(function () {
             Route::get('/employees', [V1\EmployeeController::class, 'index']);
         });
+
+        // On-premise sync agent.
+        //
+        // For devices that only speak the polling protocol and therefore sit on a
+        // tenant's private network, unreachable from this server. The agent polls
+        // locally and posts here. The token's ability restricts it to this task, and
+        // the tenant is taken from the token rather than the request body.
+        Route::middleware(['ability:biometric:ingest', 'throttle:60,1'])->group(function () {
+            Route::get('/biometric/devices',  [V1\BiometricIngestController::class, 'devices']);
+            Route::post('/biometric/punches', [V1\BiometricIngestController::class, 'store']);
+        });
     });
 });

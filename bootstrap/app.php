@@ -32,6 +32,9 @@ return Application::configure(basePath: dirname(__DIR__))
             'tenant'   => \App\Http\Middleware\RequireTenantContext::class,
             'licensed' => \App\Http\Middleware\EnsureTenantLicensed::class,
             'landlord' => \App\Http\Middleware\EnsureIsLandlordAdmin::class,
+            // Restricts a route to tokens granted a specific Sanctum ability, so an
+            // agent token can ingest punches and nothing else.
+            'ability'  => \Laravel\Sanctum\Http\Middleware\CheckForAnyAbility::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {

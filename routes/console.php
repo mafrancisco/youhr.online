@@ -2,6 +2,7 @@
 
 use App\Models\SaaS\Company;
 use App\Models\SaaS\CompanyLicense;
+use App\Models\User;
 use App\Services\SaaS\TenantManager;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
@@ -58,7 +59,78 @@ Artisan::command('tenants:migrate {--company=} {--status}', function (TenantMana
     return self::SUCCESS;
 })->purpose('Run migrations across every tenant database');
 
+Artisan::command('biometric:agent-token {company_slug} {--name=} {--revoke}', function (TenantManager $tenants) {
+    $slug = Str::lower((string) $this->argument('company_slug'));
+    $company = Company::where('slug', $slug)->first();
+
+    if (!$company) {
+        $this->error("Company '{$slug}' not found.");
+        return self::FAILURE;
+    }
+
+    $tenants->switchToCompany($company);
+
+    try {
+        // A dedicated account per site, so an agent never carries a person's
+        // credentials and can be revoked without affecting anyone's login.
+        $username = $this->option('name') ?: 'agent-' . $slug;
+
+        /** @var User $agent */
+        $agent = User::on($tenants->connectionName())->where('username', $username)->first();
+
+        if ($this->option('revoke')) {
+            if (!$agent) {
+                $this->error("No agent account '{$username}' in this tenant.");
+                return self::FAILURE;
+            }
+
+            $count = $agent->tokens()->count();
+            $agent->tokens()->delete();
+            $this->info("Revoked {$count} token(s) for '{$username}'. Any agent using them stops working immediately.");
+            return self::SUCCESS;
+        }
+
+        if (!$agent) {
+            $agent = User::on($tenants->connectionName())->create([
+                'username'      => $username,
+                'fullname'      => 'Biometric Sync Agent',
+                'email'         => $username . '@agent.local',
+                // Login is by token only; this password is never used and is random
+                // so the account cannot be signed into interactively.
+                'password'      => Str::random(48),
+                'type'          => 1,
+                'auth_provider' => 'agent',
+            ]);
+            $this->line("Created agent account '{$username}'.");
+        }
+
+        // Replace rather than accumulate, so an old copy of the token cannot linger.
+        $agent->tokens()->delete();
+
+        // Scoped to ingest only — this token cannot read employees or touch the DTR.
+        $token = $agent->createToken('biometric-agent', ['biometric:ingest']);
+
+        $this->newLine();
+        $this->info('Agent token issued. It is shown once — store it in the agent config now.');
+        $this->newLine();
+        $this->line('  Company     : ' . $company->name);
+        $this->line('  AGENT_SLUG  : ' . $company->slug);
+        $this->line('  AGENT_TOKEN : ' . $token->plainTextToken);
+        $this->line('  SERVER_URL  : ' . rtrim(config('app.url'), '/'));
+        $this->newLine();
+        $this->line('The agent sends these as:');
+        $this->line('  Authorization: Bearer <AGENT_TOKEN>');
+        $this->line('  X-Company-Slug: ' . $company->slug);
+        $this->newLine();
+
+        return self::SUCCESS;
+    } finally {
+        $tenants->restoreDefaultConnection();
+    }
+})->purpose('Issue (or revoke) a scoped biometric sync-agent token for one tenant');
+
 Artisan::command('saas:license-generate {company_slug} {--email=} {--expires=}', function () {
+
     $slug = Str::lower((string) $this->argument('company_slug'));
     $company = Company::where('slug', $slug)->first();
 
