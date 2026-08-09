@@ -25,7 +25,7 @@ class AttendanceImportController extends Controller
     {
         $request->validate([
             'files'      => ['required', 'array', 'min:1'],
-            'files.*'    => ['required', 'file'],
+            'files.*'    => ['required', 'file', 'max:10240', 'mimes:csv,txt,dat'],
             'start_date' => ['required', 'date_format:Y-m-d'],
             'end_date'   => ['required', 'date_format:Y-m-d', 'after_or_equal:start_date'],
             'emp_status' => ['required', 'integer', 'in:1,2'],

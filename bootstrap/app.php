@@ -13,10 +13,12 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware) {
         $middleware->web(append: [
+            \App\Http\Middleware\SecurityHeaders::class,
             \App\Http\Middleware\ResolveTenantContext::class,
             \App\Http\Middleware\HandleInertiaRequests::class,
         ]);
         $middleware->api(append: [
+            \Illuminate\Routing\Middleware\ThrottleRequests::class.':60,1',
             \App\Http\Middleware\ResolveTenantContext::class,
         ]);
         // Run tenant resolution immediately after the session starts, which places it
@@ -33,6 +35,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'licensed' => \App\Http\Middleware\EnsureTenantLicensed::class,
             'landlord' => \App\Http\Middleware\EnsureIsLandlordAdmin::class,
             'module'   => \App\Http\Middleware\CheckModuleAccess::class,
+            'token.tenant' => \App\Http\Middleware\ValidateTokenTenant::class,
             // Restricts a route to tokens granted a specific Sanctum ability, so an
             // agent token can ingest punches and nothing else.
             'ability'  => \Laravel\Sanctum\Http\Middleware\CheckForAnyAbility::class,

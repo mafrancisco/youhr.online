@@ -30,6 +30,10 @@ class ResolveTenantContext
                 $company = Company::where('slug', $slug)->where('status', 'active')->first();
                 if ($company) {
                     $this->tenants->switchToCompany($company);
+
+                    // After auth resolves, verify the token belongs to this tenant.
+                    // This is handled by Sanctum — the token is stored in the tenant DB,
+                    // so if the slug is wrong the token lookup will fail naturally.
                     return $next($request);
                 }
             }

@@ -26,4 +26,16 @@ return [
     |
     */
     'adms_enabled' => env('ADMS_ENABLED', false),
+
+    /*
+    |--------------------------------------------------------------------------
+    | ADMS IP Allowlist
+    |--------------------------------------------------------------------------
+    |
+    | Comma-separated list of IPs allowed to access the /iclock/* endpoints.
+    | If empty, all IPs are allowed (for development). In production, set this
+    | to the IP address(es) of your biometric devices.
+    |
+    */
+    'adms_allowed_ips' => env('ADMS_ALLOWED_IPS', ''),
 ];
