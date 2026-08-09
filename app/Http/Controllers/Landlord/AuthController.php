@@ -23,9 +23,12 @@ class AuthController extends Controller
             return redirect()->route('landlord.login')->with('error', 'Google OAuth is not configured yet. Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in .env.');
         }
 
+        // Use the main callback URL (already registered in Google Console)
+        // but with a session flag so the callback knows to route here
+        session()->put('saas.landlord_login', true);
+
         return Inertia::location(
             $this->socialite->driver('google')
-                ->redirectUrl(url('/landlord/auth/google/callback'))
                 ->scopes(['openid', 'profile', 'email'])
                 ->redirect()
                 ->getTargetUrl()
@@ -35,9 +38,7 @@ class AuthController extends Controller
     public function handleGoogleCallback(Request $request)
     {
         try {
-            $googleUser = $this->socialite->driver('google')
-                ->redirectUrl(url('/landlord/auth/google/callback'))
-                ->user();
+            $googleUser = $this->socialite->driver('google')->user();
         } catch (\Throwable) {
             return redirect()->route('landlord.login')->with('error', 'Google authentication failed.');
         }
