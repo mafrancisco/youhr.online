@@ -14,7 +14,7 @@ $basePath = dirname(dirname(__DIR__));
 $envFile  = $basePath . '/.env';
 $lockFile = $basePath . '/storage/installed.lock';
 
-if (file_exists($lockFile) && !isset($_GET['force'])) {
+if (file_exists($lockFile)) {
     header('Location: /');
     exit;
 }

@@ -343,6 +343,13 @@ class LeaveController extends Controller
 
     public function downloadForm(Leave $leave)
     {
+        // Ownership check: HR can download any, employees only their own
+        $user = request()->user();
+        if (!$user->isHR()) {
+            $employee = Employee::where('email', $user->email)->firstOrFail();
+            abort_unless($leave->badgeID === $employee->badgeID, 403);
+        }
+
         $employee = Employee::where('badgeID', $leave->badgeID)->firstOrFail();
         $s        = Setting::current();
 

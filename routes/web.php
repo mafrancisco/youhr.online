@@ -34,11 +34,11 @@ use Illuminate\Support\Facades\Route;
 // Guest
 Route::middleware('guest')->group(function () {
     Route::get('/', [CompanyOnboardingController::class, 'showLogin'])->name('login');
-    Route::post('/login', [CompanyOnboardingController::class, 'loginWithCredentials'])->name('login.credentials');
-    Route::post('/login/google', [CompanyOnboardingController::class, 'startCompanyLogin'])->name('login.submit');
+    Route::post('/login', [CompanyOnboardingController::class, 'loginWithCredentials'])->name('login.credentials')->middleware('throttle:5,1');
+    Route::post('/login/google', [CompanyOnboardingController::class, 'startCompanyLogin'])->name('login.submit')->middleware('throttle:10,1');
 
     Route::get('/register-company', [CompanyOnboardingController::class, 'showCompanyRegistration'])->name('register.company');
-    Route::post('/register-company', [CompanyOnboardingController::class, 'startCompanyRegistration'])->name('register.company.submit');
+    Route::post('/register-company', [CompanyOnboardingController::class, 'startCompanyRegistration'])->name('register.company.submit')->middleware('throttle:3,1');
 
     Route::get('/auth/google/redirect', [CompanyOnboardingController::class, 'redirectToGoogle'])->name('auth.google.redirect');
     Route::get('/auth/google/callback', [CompanyOnboardingController::class, 'handleGoogleCallback'])->name('auth.google.callback');

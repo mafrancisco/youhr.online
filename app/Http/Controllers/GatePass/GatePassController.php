@@ -170,6 +170,13 @@ class GatePassController extends Controller
 
     public function download(GatePass $gp)
     {
+        // Ownership check: HR can download any, employees only their own
+        $user = request()->user();
+        if (!$user->isHR()) {
+            $employee = Employee::where('email', $user->email)->firstOrFail();
+            abort_unless($gp->badgeID === $employee->badgeID, 403);
+        }
+
         $employee = $gp->employee;
         $s        = Setting::current();
 

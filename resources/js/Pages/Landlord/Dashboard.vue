@@ -209,7 +209,6 @@ function toggleExpand(id) {
             <thead>
               <tr class="border-b border-white/5 bg-white/[0.02]">
                 <th class="px-5 py-4 text-left text-xs font-semibold uppercase tracking-wider text-slate-400">Company</th>
-                <th class="px-5 py-4 text-left text-xs font-semibold uppercase tracking-wider text-slate-400">License Key</th>
                 <th class="px-5 py-4 text-left text-xs font-semibold uppercase tracking-wider text-slate-400">Bound Email</th>
                 <th class="px-5 py-4 text-center text-xs font-semibold uppercase tracking-wider text-slate-400">Status</th>
                 <th class="px-5 py-4 text-left text-xs font-semibold uppercase tracking-wider text-slate-400">Activated</th>
@@ -222,12 +221,6 @@ function toggleExpand(id) {
                 <td class="px-5 py-4">
                   <p class="font-semibold text-white">{{ license.company }}</p>
                   <p class="text-xs text-slate-500">{{ license.slug }}</p>
-                </td>
-                <td class="px-5 py-4">
-                  <code v-if="license.license_key" class="font-mono text-xs font-semibold text-cyan-300 bg-cyan-500/10 rounded-md px-2.5 py-1 select-all ring-1 ring-cyan-500/20">
-                    {{ license.license_key }}
-                  </code>
-                  <span v-else class="text-xs text-slate-600 italic">—</span>
                 </td>
                 <td class="px-5 py-4">
                   <span class="text-xs text-slate-400">{{ license.bound_email || '—' }}</span>

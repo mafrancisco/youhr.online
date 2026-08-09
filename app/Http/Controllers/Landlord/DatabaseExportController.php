@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Landlord;
 
 use App\Http\Controllers\Controller;
 use App\Models\SaaS\Company;
+use App\Models\SaaS\LandlordAuditLog;
 use Illuminate\Support\Facades\Config;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
@@ -14,6 +15,13 @@ class DatabaseExportController extends Controller
      */
     public function download(Company $company): StreamedResponse
     {
+        LandlordAuditLog::create([
+            'company_id' => $company->id,
+            'actor_email' => request()->session()->get('landlord_admin_email'),
+            'action' => 'database.export',
+            'meta' => ['database' => $company->database, 'type' => 'single'],
+        ]);
+
         $database = $company->database;
         $command = $this->buildDumpCommand([$database]);
         $filename = $database . '_' . now()->format('Y-m-d_His') . '.sql';
@@ -26,6 +34,12 @@ class DatabaseExportController extends Controller
      */
     public function downloadAll(): StreamedResponse
     {
+        LandlordAuditLog::create([
+            'actor_email' => request()->session()->get('landlord_admin_email'),
+            'action' => 'database.export_all',
+            'meta' => ['type' => 'full_backup'],
+        ]);
+
         $landlordDb = Config::get('database.connections.landlord.database', 'yourhr');
         $tenantDbs = Company::where('status', 'active')->pluck('database')->all();
 

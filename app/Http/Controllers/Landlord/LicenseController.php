@@ -33,9 +33,18 @@ class LicenseController extends Controller
             'metadata' => [
                 'generated_by' => request()->session()->get('landlord_admin_email'),
                 'generated_at' => now()->toIso8601String(),
-                'license_key' => $plain,
             ],
         ]);
+
+        // Send license key to the target email
+        if ($targetEmail) {
+            try {
+                Notification::route('mail', $targetEmail)
+                    ->notify(new LicenseKeyGenerated($company, $plain, $data['expires_at'] ?? null));
+            } catch (\Throwable) {
+                // Email sending failed silently — key is still displayed in flash
+            }
+        }
 
         LandlordAuditLog::create([
             'company_id' => $company->id,
@@ -56,20 +65,6 @@ class LicenseController extends Controller
     {
         $license->update(['status' => 'active']);
 
-        // Send license key email to the company owner or bound email
-        $company = $license->company;
-        $targetEmail = $license->bound_email ?? $company->owner_google_email ?? null;
-        $plainKey = $license->metadata['license_key'] ?? null;
-
-        if ($targetEmail && $plainKey) {
-            try {
-                Notification::route('mail', $targetEmail)
-                    ->notify(new LicenseKeyGenerated($company, $plainKey, $license->expires_at?->toDateString()));
-            } catch (\Throwable) {
-                // Email sending failed silently
-            }
-        }
-
         LandlordAuditLog::create([
             'company_id' => $license->company_id,
             'license_id' => $license->id,
@@ -77,15 +72,10 @@ class LicenseController extends Controller
             'action' => 'license.activated',
             'subject_type' => CompanyLicense::class,
             'subject_id' => $license->id,
-            'meta' => ['status' => 'active', 'emailed_to' => $targetEmail],
+            'meta' => ['status' => 'active'],
         ]);
 
-        $msg = 'License activated.';
-        if ($targetEmail) {
-            $msg .= ' License key sent to ' . $targetEmail . '.';
-        }
-
-        return back()->with('success', $msg);
+        return back()->with('success', 'License activated.');
     }
 
     public function suspend(CompanyLicense $license)
