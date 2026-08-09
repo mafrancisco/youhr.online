@@ -5,6 +5,7 @@ namespace App\Http\Middleware;
 use App\Models\GatePass;
 use App\Models\Leave;
 use App\Models\SaaS\Company;
+use App\Models\SaaS\CompanyModule;
 use App\Models\Setting;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
@@ -75,6 +76,16 @@ class HandleInertiaRequests extends Middleware
                     'slug' => $company->slug,
                     'licensed' => $company->hasActiveLicense(),
                 ];
+            },
+
+            'enabledModules' => function () {
+                $company = app()->bound('currentCompany') ? app('currentCompany') : null;
+
+                if (!$company) {
+                    return [];
+                }
+
+                return CompanyModule::enabledForCompany($company->id);
             },
         ]);
     }

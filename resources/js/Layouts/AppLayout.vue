@@ -9,38 +9,45 @@ const auth      = computed(() => page.props.auth)
 const settings  = computed(() => page.props.settings ?? {})
 const pending   = computed(() => page.props.pendingLeaves ?? 0)
 const pendingGP = computed(() => page.props.pendingGatePasses ?? 0)
+const enabledModules = computed(() => page.props.enabledModules ?? [])
 const sideOpen  = ref(true)
 
 const systemName = computed(() => settings.value.system_name || 'DTR System')
 const logoUrl    = computed(() => settings.value.logo_url || '')
 
+function moduleEnabled(mod) {
+  // If no modules configured yet, show everything (backward compat)
+  if (!enabledModules.value || enabledModules.value.length === 0) return true
+  return enabledModules.value.includes(mod)
+}
+
 const hrNav = computed(() => [
-  { href: '/dashboard',         label: 'Dashboard',       icon: '⊞', badge: 0 },
-  { href: '/employees',         label: 'Employees',       icon: '👥', badge: 0 },
-  { href: '/schedules',         label: 'Schedules',       icon: '📅', badge: 0 },
-  { href: '/attendance/upload', label: 'Import DTR',      icon: '📤', badge: 0 },
-  { href: '/reports/dtr',       label: 'DTR Reports',     icon: '📄', badge: 0 },
-  { href: '/holidays',          label: 'Holidays',        icon: '🗓', badge: 0 },
-  { href: '/admin/leaves',      label: 'Pending Leaves',  icon: '📋', badge: pending.value },
-  { href: '/admin/gate-passes', label: 'Gate Passes',     icon: '🚪', badge: pendingGP.value },
-  { href: '/credits',           label: 'Leave Credits',   icon: '💳', badge: 0 },
-  { href: '/users',             label: 'Users',           icon: '👤', badge: 0 },
-  { href: '/admin/divisions',           label: 'Divisions',          icon: '🏢', badge: 0 },
-  { href: '/admin/employee-statuses',  label: 'Employee Statuses',  icon: '📊', badge: 0 },
-  { href: '/admin/leave-types',       label: 'Leave Types',        icon: '📑', badge: 0 },
-  { href: '/admin/time-detection',   label: 'Time Detection',     icon: '⏱', badge: 0 },
-  { href: '/biometric/devices',        label: 'Biometric Devices',  icon: '🖐', badge: 0 },
-  { href: '/admin/settings',    label: 'Settings',        icon: '⚙️', badge: 0 },
-])
+  { href: '/dashboard',         label: 'Dashboard',       icon: '⊞', badge: 0, module: null },
+  { href: '/employees',         label: 'Employees',       icon: '👥', badge: 0, module: 'employees' },
+  { href: '/schedules',         label: 'Schedules',       icon: '📅', badge: 0, module: 'schedules' },
+  { href: '/attendance/upload', label: 'Import DTR',      icon: '📤', badge: 0, module: 'attendance' },
+  { href: '/reports/dtr',       label: 'DTR Reports',     icon: '📄', badge: 0, module: 'attendance' },
+  { href: '/holidays',          label: 'Holidays',        icon: '🗓', badge: 0, module: 'holidays' },
+  { href: '/admin/leaves',      label: 'Pending Leaves',  icon: '📋', badge: pending.value, module: 'leaves' },
+  { href: '/admin/gate-passes', label: 'Gate Passes',     icon: '🚪', badge: pendingGP.value, module: 'gate-passes' },
+  { href: '/credits',           label: 'Leave Credits',   icon: '💳', badge: 0, module: 'credits' },
+  { href: '/users',             label: 'Users',           icon: '👤', badge: 0, module: 'users' },
+  { href: '/admin/divisions',           label: 'Divisions',          icon: '🏢', badge: 0, module: 'divisions' },
+  { href: '/admin/employee-statuses',  label: 'Employee Statuses',  icon: '📊', badge: 0, module: 'employee-statuses' },
+  { href: '/admin/leave-types',       label: 'Leave Types',        icon: '📑', badge: 0, module: 'leave-types' },
+  { href: '/admin/time-detection',   label: 'Time Detection',     icon: '⏱', badge: 0, module: 'time-detection' },
+  { href: '/biometric/devices',        label: 'Biometric Devices',  icon: '🖐', badge: 0, module: 'biometric' },
+  { href: '/admin/settings',    label: 'Settings',        icon: '⚙️', badge: 0, module: 'settings' },
+].filter(item => item.module === null || moduleEnabled(item.module)))
 
-const empNav = [
-  { href: '/dashboard',   label: 'Dashboard',  icon: '⊞', badge: 0 },
-  { href: '/dtr',         label: 'My DTR',     icon: '📋', badge: 0 },
-  { href: '/leaves',      label: 'My Leaves',  icon: '📝', badge: 0 },
-  { href: '/gate-passes', label: 'Gate Pass',  icon: '🚪', badge: 0 },
-]
+const empNav = computed(() => [
+  { href: '/dashboard',   label: 'Dashboard',  icon: '⊞', badge: 0, module: null },
+  { href: '/dtr',         label: 'My DTR',     icon: '📋', badge: 0, module: 'attendance' },
+  { href: '/leaves',      label: 'My Leaves',  icon: '📝', badge: 0, module: 'leaves' },
+  { href: '/gate-passes', label: 'Gate Pass',  icon: '🚪', badge: 0, module: 'gate-passes' },
+].filter(item => item.module === null || moduleEnabled(item.module)))
 
-const navItems = computed(() => auth.value?.isHR ? hrNav.value : empNav)
+const navItems = computed(() => auth.value?.isHR ? hrNav.value : empNav.value)
 
 function isActive(href) {
   return page.url.startsWith(href) && href !== '/dashboard'

@@ -28,6 +28,21 @@ class Company extends Model
         return $this->hasMany(CompanyLicense::class);
     }
 
+    public function modules(): HasMany
+    {
+        return $this->hasMany(CompanyModule::class);
+    }
+
+    public function enabledModules(): array
+    {
+        return CompanyModule::enabledForCompany($this->id);
+    }
+
+    public function hasModule(string $module): bool
+    {
+        return CompanyModule::isModuleEnabled($this->id, $module);
+    }
+
     public function hasActiveLicense(): bool
     {
         return $this->licenses()

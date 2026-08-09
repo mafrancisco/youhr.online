@@ -24,6 +24,8 @@ use App\Http\Controllers\SaaS\CompanyOnboardingController;
 use App\Http\Controllers\SaaS\LicenseActivationController;
 use App\Http\Controllers\Landlord\AuthController as LandlordAuthController;
 use App\Http\Controllers\Landlord\CompanyController as LandlordCompanyController;
+use App\Http\Controllers\Landlord\CompanyModuleController as LandlordCompanyModuleController;
+use App\Http\Controllers\Landlord\DatabaseExportController as LandlordDatabaseExportController;
 use App\Http\Controllers\Landlord\DashboardController as LandlordDashboardController;
 use App\Http\Controllers\Landlord\LicenseController as LandlordLicenseController;
 use App\Http\Controllers\Users\UserController;
@@ -67,10 +69,10 @@ Route::middleware(['auth', 'tenant'])->group(function () {
         Route::put('/employees/{emp}/deactivate',   [EmployeeController::class, 'deactivate'])->name('employees.deactivate');
         Route::put('/employees/{emp}/reactivate',   [EmployeeController::class, 'reactivate'])->name('employees.reactivate');
 
-        Route::get('/schedules',                    [ScheduleController::class, 'index'])->name('schedules.index');
-        Route::post('/schedules',                   [ScheduleController::class, 'store'])->name('schedules.store');
-        Route::put('/schedules/{sched}',            [ScheduleController::class, 'update'])->name('schedules.update');
-        Route::delete('/schedules/{sched}',         [ScheduleController::class, 'destroy'])->name('schedules.destroy');
+        Route::get('/schedules',                    [ScheduleController::class, 'index'])->name('schedules.index')->middleware('module:schedules');
+        Route::post('/schedules',                   [ScheduleController::class, 'store'])->name('schedules.store')->middleware('module:schedules');
+        Route::put('/schedules/{sched}',            [ScheduleController::class, 'update'])->name('schedules.update')->middleware('module:schedules');
+        Route::delete('/schedules/{sched}',         [ScheduleController::class, 'destroy'])->name('schedules.destroy')->middleware('module:schedules');
 
         Route::get('/attendance/upload',            [AttendanceImportController::class, 'index'])->name('attendance.upload');
         Route::post('/attendance/import',           [AttendanceImportController::class, 'import'])->name('attendance.import');
@@ -82,26 +84,26 @@ Route::middleware(['auth', 'tenant'])->group(function () {
         Route::get('/reports/dtr',                  [DTRReportController::class, 'bulk'])->name('reports.dtr');
         Route::get('/reports/dtr/download',         [DTRReportController::class, 'bulkDownload'])->name('reports.dtr.download');
 
-        Route::get('/holidays',                     [HolidayController::class, 'index'])->name('holidays.index');
-        Route::post('/holidays',                    [HolidayController::class, 'store'])->name('holidays.store');
-        Route::put('/holidays/{holiday}',           [HolidayController::class, 'update'])->name('holidays.update');
-        Route::delete('/holidays/{holiday}',        [HolidayController::class, 'destroy'])->name('holidays.destroy');
+        Route::get('/holidays',                     [HolidayController::class, 'index'])->name('holidays.index')->middleware('module:holidays');
+        Route::post('/holidays',                    [HolidayController::class, 'store'])->name('holidays.store')->middleware('module:holidays');
+        Route::put('/holidays/{holiday}',           [HolidayController::class, 'update'])->name('holidays.update')->middleware('module:holidays');
+        Route::delete('/holidays/{holiday}',        [HolidayController::class, 'destroy'])->name('holidays.destroy')->middleware('module:holidays');
 
-        Route::get('/admin/leaves',                 [LeaveController::class, 'adminIndex'])->name('leaves.admin');
-        Route::put('/leaves/{leave}',               [LeaveController::class, 'update'])->name('leaves.update');
+        Route::get('/admin/leaves',                 [LeaveController::class, 'adminIndex'])->name('leaves.admin')->middleware('module:leaves');
+        Route::put('/leaves/{leave}',               [LeaveController::class, 'update'])->name('leaves.update')->middleware('module:leaves');
 
-        Route::get('/admin/gate-passes',            [GatePassController::class, 'adminIndex'])->name('gate-passes.admin');
-        Route::put('/gate-passes/{gp}/approve',     [GatePassController::class, 'approve'])->name('gate-passes.approve');
-        Route::put('/gate-passes/{gp}/cancel',      [GatePassController::class, 'cancelAdmin'])->name('gate-passes.cancel');
+        Route::get('/admin/gate-passes',            [GatePassController::class, 'adminIndex'])->name('gate-passes.admin')->middleware('module:gate-passes');
+        Route::put('/gate-passes/{gp}/approve',     [GatePassController::class, 'approve'])->name('gate-passes.approve')->middleware('module:gate-passes');
+        Route::put('/gate-passes/{gp}/cancel',      [GatePassController::class, 'cancelAdmin'])->name('gate-passes.cancel')->middleware('module:gate-passes');
 
-        Route::get('/credits',                      [LeaveCreditController::class, 'index'])->name('credits.index');
-        Route::post('/credits',                     [LeaveCreditController::class, 'store'])->name('credits.store');
-        Route::put('/credits/{badgeID}',            [LeaveCreditController::class, 'update'])->name('credits.update');
+        Route::get('/credits',                      [LeaveCreditController::class, 'index'])->name('credits.index')->middleware('module:credits');
+        Route::post('/credits',                     [LeaveCreditController::class, 'store'])->name('credits.store')->middleware('module:credits');
+        Route::put('/credits/{badgeID}',            [LeaveCreditController::class, 'update'])->name('credits.update')->middleware('module:credits');
 
-        Route::get('/users',                        [UserController::class, 'index'])->name('users.index');
-        Route::post('/users',                       [UserController::class, 'store'])->name('users.store');
-        Route::put('/users/{user}',                 [UserController::class, 'update'])->name('users.update');
-        Route::delete('/users/{user}',              [UserController::class, 'destroy'])->name('users.destroy');
+        Route::get('/users',                        [UserController::class, 'index'])->name('users.index')->middleware('module:users');
+        Route::post('/users',                       [UserController::class, 'store'])->name('users.store')->middleware('module:users');
+        Route::put('/users/{user}',                 [UserController::class, 'update'])->name('users.update')->middleware('module:users');
+        Route::delete('/users/{user}',              [UserController::class, 'destroy'])->name('users.destroy')->middleware('module:users');
 
         Route::get('/admin/divisions',                      [DivisionController::class, 'index'])->name('divisions.index');
         Route::post('/admin/divisions',                     [DivisionController::class, 'storeDivision'])->name('divisions.store');
@@ -151,16 +153,16 @@ Route::middleware(['auth', 'tenant'])->group(function () {
         Route::post('/dtr/requests',                [AdjustmentRequestController::class, 'store'])->name('dtr.requests.store');
         Route::delete('/dtr/requests/{req}',        [AdjustmentRequestController::class, 'destroy'])->name('dtr.requests.destroy');
 
-        Route::get('/leaves',                       [LeaveController::class, 'index'])->name('leaves.index');
-        Route::post('/leaves',                      [LeaveController::class, 'store'])->name('leaves.store');
-        Route::delete('/leaves/{leave}',            [LeaveController::class, 'destroy'])->name('leaves.destroy');
-        Route::get('/leaves/{leave}/download',      [LeaveController::class, 'downloadForm'])->name('leaves.download');
+        Route::get('/leaves',                       [LeaveController::class, 'index'])->name('leaves.index')->middleware('module:leaves');
+        Route::post('/leaves',                      [LeaveController::class, 'store'])->name('leaves.store')->middleware('module:leaves');
+        Route::delete('/leaves/{leave}',            [LeaveController::class, 'destroy'])->name('leaves.destroy')->middleware('module:leaves');
+        Route::get('/leaves/{leave}/download',      [LeaveController::class, 'downloadForm'])->name('leaves.download')->middleware('module:leaves');
 
-        Route::get('/gate-passes',                  [GatePassController::class, 'index'])->name('gate-passes.index');
-        Route::post('/gate-passes',                 [GatePassController::class, 'store'])->name('gate-passes.store');
-        Route::put('/gate-passes/{gp}',             [GatePassController::class, 'update'])->name('gate-passes.update');
-        Route::delete('/gate-passes/{gp}',          [GatePassController::class, 'destroy'])->name('gate-passes.destroy');
-        Route::get('/gate-passes/{gp}/download',    [GatePassController::class, 'download'])->name('gate-passes.download');
+        Route::get('/gate-passes',                  [GatePassController::class, 'index'])->name('gate-passes.index')->middleware('module:gate-passes');
+        Route::post('/gate-passes',                 [GatePassController::class, 'store'])->name('gate-passes.store')->middleware('module:gate-passes');
+        Route::put('/gate-passes/{gp}',             [GatePassController::class, 'update'])->name('gate-passes.update')->middleware('module:gate-passes');
+        Route::delete('/gate-passes/{gp}',          [GatePassController::class, 'destroy'])->name('gate-passes.destroy')->middleware('module:gate-passes');
+        Route::get('/gate-passes/{gp}/download',    [GatePassController::class, 'download'])->name('gate-passes.download')->middleware('module:gate-passes');
     });
 
     // Any authenticated user
@@ -171,6 +173,9 @@ Route::middleware(['auth', 'tenant'])->group(function () {
 Route::prefix('landlord')->middleware('landlord')->group(function () {
     Route::get('/', [LandlordDashboardController::class, 'index'])->name('landlord.dashboard');
     Route::post('/companies/{company}/status', [LandlordCompanyController::class, 'update'])->name('landlord.companies.status');
+    Route::get('/companies/{company}/modules', [LandlordCompanyModuleController::class, 'edit'])->name('landlord.companies.modules');
+    Route::put('/companies/{company}/modules', [LandlordCompanyModuleController::class, 'update'])->name('landlord.companies.modules.update');
+    Route::get('/companies/{company}/database/download', [LandlordDatabaseExportController::class, 'download'])->name('landlord.companies.database.download');
     Route::post('/companies/{company}/licenses', [LandlordLicenseController::class, 'generate'])->name('landlord.companies.licenses.generate');
     Route::post('/licenses/{license}/activate', [LandlordLicenseController::class, 'activate'])->name('landlord.licenses.activate');
     Route::post('/licenses/{license}/suspend', [LandlordLicenseController::class, 'suspend'])->name('landlord.licenses.suspend');

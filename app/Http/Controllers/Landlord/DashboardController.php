@@ -38,6 +38,7 @@ class DashboardController extends Controller
                 'company' => $license->company?->name,
                 'slug' => $license->company?->slug,
                 'status' => $license->status,
+                'license_key' => $license->metadata['license_key'] ?? null,
                 'bound_email' => $license->bound_email,
                 'activated_by_email' => $license->activated_by_email,
                 'activated_at' => $license->activated_at?->toDateTimeString(),
