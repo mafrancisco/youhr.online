@@ -34,6 +34,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'tenant'   => \App\Http\Middleware\RequireTenantContext::class,
             'licensed' => \App\Http\Middleware\EnsureTenantLicensed::class,
             'landlord' => \App\Http\Middleware\EnsureIsLandlordAdmin::class,
+            'landlord.recent' => \App\Http\Middleware\RequireRecentAuth::class,
             'module'   => \App\Http\Middleware\CheckModuleAccess::class,
             'token.tenant' => \App\Http\Middleware\ValidateTokenTenant::class,
             // Restricts a route to tokens granted a specific Sanctum ability, so an

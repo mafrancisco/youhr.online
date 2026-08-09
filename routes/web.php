@@ -175,8 +175,8 @@ Route::prefix('landlord')->middleware('landlord')->group(function () {
     Route::post('/companies/{company}/status', [LandlordCompanyController::class, 'update'])->name('landlord.companies.status');
     Route::get('/companies/{company}/modules', [LandlordCompanyModuleController::class, 'edit'])->name('landlord.companies.modules');
     Route::put('/companies/{company}/modules', [LandlordCompanyModuleController::class, 'update'])->name('landlord.companies.modules.update');
-    Route::get('/companies/{company}/database/download', [LandlordDatabaseExportController::class, 'download'])->name('landlord.companies.database.download');
-    Route::get('/database/download-all', [LandlordDatabaseExportController::class, 'downloadAll'])->name('landlord.database.download-all');
+    Route::get('/companies/{company}/database/download', [LandlordDatabaseExportController::class, 'download'])->name('landlord.companies.database.download')->middleware('landlord.recent');
+    Route::get('/database/download-all', [LandlordDatabaseExportController::class, 'downloadAll'])->name('landlord.database.download-all')->middleware('landlord.recent');
     Route::post('/companies/{company}/licenses', [LandlordLicenseController::class, 'generate'])->name('landlord.companies.licenses.generate');
     Route::post('/licenses/{license}/activate', [LandlordLicenseController::class, 'activate'])->name('landlord.licenses.activate');
     Route::post('/licenses/{license}/suspend', [LandlordLicenseController::class, 'suspend'])->name('landlord.licenses.suspend');

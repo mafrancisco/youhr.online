@@ -25,12 +25,24 @@ class TenantManager
 
     public function switchToCompany(Company $company): void
     {
+        // Validate database name has expected prefix to prevent accessing arbitrary databases
+        $prefix = config('saas.tenant_database_prefix', 'tenant_');
+        $database = $company->database;
+
+        if (!preg_match('/^[a-z0-9_\-]+$/i', $database)) {
+            throw new \RuntimeException("Invalid tenant database name: contains illegal characters.");
+        }
+
+        if (!str_starts_with($database, $prefix)) {
+            throw new \RuntimeException("Invalid tenant database name: must start with '{$prefix}'.");
+        }
+
         $this->originalDefaultConnection ??= config('database.default');
 
         $tenantConnection = $this->connectionName();
         $base = Config::get('database.connections.' . $tenantConnection, []);
 
-        $base['database'] = $company->database;
+        $base['database'] = $database;
 
         Config::set('database.connections.' . $tenantConnection, $base);
         DB::purge($tenantConnection);

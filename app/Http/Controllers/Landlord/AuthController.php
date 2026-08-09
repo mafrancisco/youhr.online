@@ -23,11 +23,9 @@ class AuthController extends Controller
             return redirect()->route('landlord.login')->with('error', 'Google OAuth is not configured yet. Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in .env.');
         }
 
-        // Set session flag so the shared callback knows this is a landlord login
-        session()->put('saas.landlord_login', true);
-
         return Inertia::location(
             $this->socialite->driver('google')
+                ->redirectUrl(url('/landlord/auth/google/callback'))
                 ->scopes(['openid', 'profile', 'email'])
                 ->redirect()
                 ->getTargetUrl()
@@ -37,7 +35,9 @@ class AuthController extends Controller
     public function handleGoogleCallback(Request $request)
     {
         try {
-            $googleUser = $this->socialite->driver('google')->user();
+            $googleUser = $this->socialite->driver('google')
+                ->redirectUrl(url('/landlord/auth/google/callback'))
+                ->user();
         } catch (\Throwable) {
             return redirect()->route('landlord.login')->with('error', 'Google authentication failed.');
         }
@@ -50,8 +50,12 @@ class AuthController extends Controller
         $request->session()->regenerate();
         $request->session()->put('landlord_admin_email', $googleUser->email);
         $request->session()->put('landlord_admin_name', $googleUser->name);
+        $request->session()->put('landlord_auth_at', now()->timestamp);
 
-        return redirect()->route('landlord.dashboard');
+        // Redirect to intended URL if re-authenticating for a sensitive operation
+        $intended = $request->session()->pull('landlord_intended_url');
+
+        return redirect($intended ?? route('landlord.dashboard'));
     }
 
     public function logout(Request $request)

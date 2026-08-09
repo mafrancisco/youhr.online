@@ -147,12 +147,6 @@ class CompanyOnboardingController extends Controller
 
     public function handleGoogleCallback(Request $request)
     {
-        // If this is a landlord login flow, delegate to the landlord controller
-        if ($request->session()->get('saas.landlord_login')) {
-            $request->session()->forget('saas.landlord_login');
-            return app(\App\Http\Controllers\Landlord\AuthController::class)->handleGoogleCallback($request);
-        }
-
         try {
             $googleUser = $this->socialite->driver('google')->user();
         } catch (\Throwable $e) {
