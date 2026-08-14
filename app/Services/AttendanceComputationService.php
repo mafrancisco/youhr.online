@@ -27,7 +27,7 @@ class AttendanceComputationService
     /** Pre-loaded approved gate passes keyed by badgeID => [date => [passes]] */
     private array $gatePasses = [];
 
-    public function compute(string $startDate, string $endDate): void
+    public function compute(string $startDate, string $endDate, ?int $empStatus = null): void
     {
         // Pre-load all reference data to avoid N+1 queries
         $this->preloadSchedules();
@@ -35,10 +35,10 @@ class AttendanceComputationService
         $this->preloadGatePasses($startDate, $endDate);
 
         // First pass: compute tardiness and initial undertime
-        $this->firstPass($startDate, $endDate);
+        $this->firstPass($startDate, $endDate, $empStatus);
 
         // Second pass: refine undertime, compute OT, apply gate pass adjustments
-        $this->secondPass($startDate, $endDate);
+        $this->secondPass($startDate, $endDate, $empStatus);
     }
 
     // -----------------------------------------------------------------------
@@ -105,15 +105,21 @@ class AttendanceComputationService
     // -----------------------------------------------------------------------
     // First pass — compute tardiness and initial undertime
     // -----------------------------------------------------------------------
-    private function firstPass(string $startDate, string $endDate): void
+    private function firstPass(string $startDate, string $endDate, ?int $empStatus = null): void
     {
+        $statusFilter = $empStatus === null ? '' : 'e.empStatus = ? AND';
+        $params = $empStatus === null
+            ? [$startDate, $endDate]
+            : [$empStatus, $startDate, $endDate];
+
         $rows = DB::select("
             SELECT c.id, c.BadgeNumber, c.AttDate, c.StartTime1, c.StartTime2, c.StartTime3, c.StartTime4,
                    e.schedule, c.OTIn, c.OTOut
             FROM attendance_clean c
             JOIN employees e ON c.BadgeNumber = e.badgeID
-            WHERE STR_TO_DATE(c.AttDate, '%m/%d/%Y') BETWEEN ? AND ?
-        ", [$startDate, $endDate]);
+            WHERE {$statusFilter}
+              STR_TO_DATE(c.AttDate, '%m/%d/%Y') BETWEEN ? AND ?
+        ", $params);
 
         $tardinessUpdates = [];
         $leaveUpdates = [];
@@ -301,20 +307,26 @@ class AttendanceComputationService
     // -----------------------------------------------------------------------
     // Second pass — refine undertime, compute OT, apply gate pass adjustments
     // -----------------------------------------------------------------------
-    private function secondPass(string $startDate, string $endDate): void
+    private function secondPass(string $startDate, string $endDate, ?int $empStatus = null): void
     {
         // Load OT threshold: minutes after scheduled timeout where OT starts
         // The 'otin' setting's before_minutes field stores this offset
         $otSetting = DB::selectOne("SELECT before_minutes FROM time_detection_settings WHERE punch_type = 'otin' LIMIT 1");
         $otOffsetMinutes = $otSetting ? (int) $otSetting->before_minutes : 0;
 
+        $statusFilter = $empStatus === null ? '' : 'e.empStatus = ? AND';
+        $params = $empStatus === null
+            ? [$startDate, $endDate]
+            : [$empStatus, $startDate, $endDate];
+
         $rows = DB::select("
             SELECT c.id, c.StartTime1, c.StartTime2, c.StartTime3, c.StartTime4,
                    c.BadgeNumber, c.AttDate, c.OTIn, c.OTOut, e.schedule
             FROM attendance_clean c
             JOIN employees e ON c.BadgeNumber = e.badgeID
-            WHERE STR_TO_DATE(c.AttDate, '%m/%d/%Y') BETWEEN ? AND ?
-        ", [$startDate, $endDate]);
+            WHERE {$statusFilter}
+              STR_TO_DATE(c.AttDate, '%m/%d/%Y') BETWEEN ? AND ?
+        ", $params);
 
         $updates = [];
 

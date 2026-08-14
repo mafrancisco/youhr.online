@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\EmployeeStatus;
 use App\Models\Setting;
 use Illuminate\Support\Facades\DB;
 use Mpdf\Mpdf;
@@ -45,15 +46,15 @@ class DTRPdfService
         $end_date   = date('F j, Y', strtotime($endDate));
         $attRange   = $start_date . '-' . $end_date;
 
-        $fname    = ($empStatus == 1) ? 'Regular Employees' : 'Contractual Employees';
+        $fname    = EmployeeStatus::find($empStatus)?->description ?? 'Employees';
         $filename = $fname . ' DTR-' . $attRange . '.pdf';
 
         if (!empty($badgeIDs)) {
             $placeholders = implode(',', array_fill(0, count($badgeIDs), '?'));
 
             $employees = DB::select(
-                "SELECT badgeID, empName, empHead FROM employees WHERE badgeID IN ({$placeholders}) ORDER BY empName",
-                array_values($badgeIDs)
+                "SELECT badgeID, empName, empHead FROM employees WHERE empStatus = ? AND badgeID IN ({$placeholders}) ORDER BY empName",
+                array_merge([$empStatus], array_values($badgeIDs))
             );
         } else {
             $employees = DB::select(

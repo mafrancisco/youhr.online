@@ -33,6 +33,7 @@ class AttendanceImportService
             $badgeIDs = array_merge($badgeIDs, $this->collectBadgeIDs($filePath));
         }
         $badgeIDs = array_unique($badgeIDs);
+        $badgeIDs = $this->filterBadgeIDsByStatus($badgeIDs, $empStatus);
 
         // ===================================================================
         // Step 1: Parse ALL files and insert into attendance staging table
@@ -98,7 +99,7 @@ class AttendanceImportService
         // ===================================================================
         // Step 2.3: Classify punches using Time Detection Rules
         // ===================================================================
-        $this->classifyPunchesBySchedule($startDate, $endDate);
+        $this->classifyPunchesBySchedule($startDate, $endDate, $empStatus);
 
         // ===================================================================
         // Step 2.4: Truncate attendance staging table
@@ -111,7 +112,7 @@ class AttendanceImportService
     /**
      * Classify raw punches from the staging table into attendance_clean slots.
      */
-    private function classifyPunchesBySchedule(string $startDate, string $endDate): void
+    private function classifyPunchesBySchedule(string $startDate, string $endDate, int $empStatus): void
     {
         // Only process rows that were seeded blank (startTime1 = '')
         $cleanRecords = DB::select("
@@ -119,9 +120,10 @@ class AttendanceImportService
             FROM attendance_clean c
             JOIN employees e ON c.BadgeNumber = e.badgeID
             WHERE c.startTime1 = ''
+              AND e.empStatus = ?
               AND STR_TO_DATE(c.AttDate, '%m/%d/%Y')
                   BETWEEN STR_TO_DATE(?, '%Y-%m-%d') AND STR_TO_DATE(?, '%Y-%m-%d')
-        ", [$startDate, $endDate]);
+        ", [$empStatus, $startDate, $endDate]);
 
         foreach ($cleanRecords as $rec) {
             $badge   = $rec->BadgeNumber;
@@ -204,6 +206,19 @@ class AttendanceImportService
 
         fclose($handle);
         return $badgeIDs;
+    }
+
+    private function filterBadgeIDsByStatus(array $badgeIDs, int $empStatus): array
+    {
+        if (empty($badgeIDs)) {
+            return [];
+        }
+
+        return Employee::whereIn('badgeID', $badgeIDs)
+            ->where('empStatus', $empStatus)
+            ->pluck('badgeID')
+            ->map(fn($badgeID) => (int) $badgeID)
+            ->all();
     }
 
     // -----------------------------------------------------------------------

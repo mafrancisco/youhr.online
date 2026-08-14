@@ -5,11 +5,18 @@ import AppLayout from '@/Layouts/AppLayout.vue'
 import PrimaryButton from '@/Components/PrimaryButton.vue'
 import FlashMessage from '@/Components/FlashMessage.vue'
 
+const props = defineProps({
+  employeeStatuses: {
+    type: Array,
+    default: () => [],
+  },
+})
+
 const importForm = useForm({
   files:      [],
   start_date: '',
   end_date:   '',
-  emp_status: '1',
+  emp_status: props.employeeStatuses[0]?.id ? String(props.employeeStatuses[0].id) : '',
 })
 const fileNames = ref([])
 
@@ -85,9 +92,12 @@ function submitCompute() {
             <label class="block text-xs font-medium text-gray-700 mb-1">Employee Type</label>
             <select v-model="importForm.emp_status" required
               class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-              <option value="1">Regular Employees</option>
-              <option value="2">Contractual Employees</option>
+              <option value="" disabled>Select employee status</option>
+              <option v-for="status in employeeStatuses" :key="status.id" :value="String(status.id)">
+                {{ status.description }}
+              </option>
             </select>
+            <p v-if="importForm.errors.emp_status" class="text-xs text-red-500 mt-1">{{ importForm.errors.emp_status }}</p>
           </div>
 
           <div>
@@ -127,7 +137,7 @@ function submitCompute() {
           </div>
 
           <PrimaryButton type="submit" :loading="importForm.processing"
-            :disabled="!importForm.files.length || !importForm.start_date || !importForm.end_date">
+            :disabled="!importForm.files.length || !importForm.start_date || !importForm.end_date || !importForm.emp_status">
             Import {{ fileNames.length > 1 ? `${fileNames.length} Files` : 'Attendance' }}
           </PrimaryButton>
         </form>

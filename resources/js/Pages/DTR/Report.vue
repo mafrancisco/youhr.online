@@ -7,21 +7,30 @@ import FlashMessage from '@/Components/FlashMessage.vue'
 const props = defineProps({
   start_date: String,
   end_date:   String,
+  emp_status: [String, Number],
+  employeeStatuses: {
+    type: Array,
+    default: () => [],
+  },
   employees:  Array,
 })
 
 const startDate     = ref(props.start_date)
 const endDate       = ref(props.end_date)
 const selected      = ref([])
-const bulkEmpStatus = ref('1')
+const bulkEmpStatus = ref(props.emp_status ? String(props.emp_status) : (props.employeeStatuses[0]?.id ? String(props.employeeStatuses[0].id) : ''))
 const search        = ref('')
+
+const statusFilteredEmployees = computed(() =>
+  props.employees.filter(e => String(e.empStatus) === String(bulkEmpStatus.value))
+)
 
 const filteredEmployees = computed(() => {
   const q = search.value.trim().toLowerCase()
-  if (!q) return props.employees
-  return props.employees.filter(e =>
+  if (!q) return statusFilteredEmployees.value
+  return statusFilteredEmployees.value.filter(e =>
     e.empName.toLowerCase().includes(q) ||
-    e.badgeID.toLowerCase().includes(q)
+    String(e.badgeID).toLowerCase().includes(q)
   )
 })
 
@@ -62,6 +71,12 @@ function downloadBulk() {
   if (!startDate.value || !endDate.value) return
   window.open(`/reports/dtr/download?start_date=${startDate.value}&end_date=${endDate.value}&emp_status=${bulkEmpStatus.value}`, '_blank')
 }
+
+function changeStatus() {
+  selected.value = selected.value.filter(badgeID =>
+    statusFilteredEmployees.value.some(e => e.badgeID === badgeID)
+  )
+}
 </script>
 
 <template>
@@ -83,10 +98,12 @@ function downloadBulk() {
 
       <div>
         <label class="block text-xs font-medium text-gray-600 mb-1">Employee Type</label>
-        <select v-model="bulkEmpStatus"
+        <select v-model="bulkEmpStatus" @change="changeStatus"
           class="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
-          <option value="1">Regular</option>
-          <option value="2">Contractual</option>
+          <option value="" disabled>Select employee status</option>
+          <option v-for="status in employeeStatuses" :key="status.id" :value="String(status.id)">
+            {{ status.description }}
+          </option>
         </select>
       </div>
 
@@ -106,7 +123,7 @@ function downloadBulk() {
       <div class="px-4 py-3 border-b bg-gray-50">
         <input v-model="search" type="search" placeholder="Search by name or badge ID..."
           class="w-full max-w-sm border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
-        <span class="text-xs text-gray-400 ml-3">{{ filteredEmployees.length }} of {{ employees.length }} employees</span>
+        <span class="text-xs text-gray-400 ml-3">{{ filteredEmployees.length }} of {{ statusFilteredEmployees.length }} employees</span>
       </div>
 
       <table class="w-full text-sm">

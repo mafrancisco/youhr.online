@@ -4,6 +4,7 @@ namespace App\Http\Controllers\DTR;
 
 use App\Http\Controllers\Controller;
 use App\Models\Employee;
+use App\Models\EmployeeStatus;
 use App\Services\DTRPdfService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -17,10 +18,17 @@ class DTRReportController extends Controller
 
     public function bulk(Request $request): Response
     {
+        $employeeStatuses = EmployeeStatus::orderBy('id')->get(['id', 'description']);
+        $selectedStatus = (int) $request->get('emp_status', $employeeStatuses->first()?->id);
+
         return Inertia::render('DTR/Report', [
             'start_date' => $request->get('start_date', now()->startOfMonth()->format('Y-m-d')),
             'end_date'   => $request->get('end_date',   now()->endOfMonth()->format('Y-m-d')),
-            'employees'  => Employee::active()->orderBy('empName')->get(['id', 'badgeID', 'empName']),
+            'emp_status' => $selectedStatus,
+            'employeeStatuses' => $employeeStatuses,
+            'employees'  => Employee::active()
+                ->orderBy('empName')
+                ->get(['id', 'badgeID', 'empName', 'empStatus']),
         ]);
     }
 
@@ -29,7 +37,7 @@ class DTRReportController extends Controller
         $request->validate([
             'start_date' => ['required', 'date_format:Y-m-d'],
             'end_date'   => ['required', 'date_format:Y-m-d', 'after_or_equal:start_date'],
-            'emp_status' => ['required', 'integer', 'in:1,2'],
+            'emp_status' => ['required', 'integer', 'exists:empstatus,id'],
             'badges'     => ['nullable', 'string'],
         ]);
 
@@ -46,8 +54,12 @@ class DTRReportController extends Controller
         ));
 
         if (!empty($badgeIDs)) {
-            // Restrict to badges that exist, so a tampered list cannot probe others.
-            $badgeIDs = Employee::whereIn('badgeID', $badgeIDs)->pluck('badgeID')->all();
+            // Restrict to badges that exist under the selected status, so a
+            // tampered list cannot include employees from other status groups.
+            $badgeIDs = Employee::whereIn('badgeID', $badgeIDs)
+                ->where('empStatus', $empStatus)
+                ->pluck('badgeID')
+                ->all();
 
             if (empty($badgeIDs)) {
                 return back()->with('error', 'None of the selected employees could be found.');
@@ -61,7 +73,7 @@ class DTRReportController extends Controller
         if (!empty($badgeIDs)) {
             $filename = 'Selected Employees DTR-' . $attRange . '.pdf';
         } else {
-            $fname    = ($empStatus == 1) ? 'Regular Employees' : 'Contractual Employees';
+            $fname = EmployeeStatus::find($empStatus)?->description ?? 'Employees';
             $filename = $fname . ' DTR-' . $attRange . '.pdf';
         }
 
