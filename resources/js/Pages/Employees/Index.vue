@@ -92,6 +92,7 @@ function openAdd() {
 function openEdit(emp) {
   form.reset()
   form.clearErrors()
+  form.badgeID     = emp.badgeID
   form.empName     = emp.empName
   form.email       = emp.email
   form.empStatus   = emp.empStatus
@@ -193,7 +194,7 @@ function onConfirm() {
 
       <template #body>
         <form @submit.prevent="submit" id="emp-form" class="grid grid-cols-2 gap-4">
-          <div v-if="modalMode === 'add'" class="col-span-2">
+          <div class="col-span-2">
             <FormInput label="Badge ID" v-model="form.badgeID" :error="form.errors.badgeID" />
           </div>
 

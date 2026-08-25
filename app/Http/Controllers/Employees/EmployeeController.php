@@ -77,6 +77,7 @@ class EmployeeController extends Controller
     public function update(Request $request, Employee $emp)
     {
         $data = $request->validate([
+            'badgeID'     => ['required', "unique:employees,badgeID,{$emp->id}"],
             'empName'     => ['required', 'string', 'max:255'],
             'email'       => ['required', 'email', "unique:employees,email,{$emp->id}"],
             'empStatus'   => ['required'],
