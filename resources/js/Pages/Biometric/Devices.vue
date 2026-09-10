@@ -180,7 +180,7 @@ watch([search, perPage], () => { currentPage.value = 1 })
           <div class="grid grid-cols-2 gap-4">
             <FormInput label="Device Name" v-model="form.name" :error="form.errors.name" required />
             <SelectInput label="Model" v-model="form.model" :error="form.errors.model"
-              :options="['ZK IN05-A', 'ZK F18', 'ZK K40', 'ZK MB20', 'ZK MB460 Plus', 'ZK iClock 880', 'Other']" />
+              :options="['ZK IN05-A', 'ZKTec IN02-A', 'ZK F18', 'ZK K40', 'ZK MB20', 'ZK MB460 Plus', 'ZK iClock 880', 'Other']" />
           </div>
 
           <FormInput label="Serial Number" v-model="form.serial_number" :error="form.errors.serial_number"
