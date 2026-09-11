@@ -7,6 +7,8 @@ use App\Models\SaaS\Company;
 use App\Models\SaaS\CompanyLicense;
 use App\Models\SaaS\LandlordAuditLog;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -26,6 +28,7 @@ class DashboardController extends Controller
                 'status' => $company->status,
                 'licensed' => $company->hasActiveLicense(),
                 'licenses_count' => $company->licenses_count,
+                'employee_count' => $this->countEmployees($company->database),
                 'created_at' => $company->created_at?->toDateTimeString(),
             ]);
 
@@ -67,5 +70,31 @@ class DashboardController extends Controller
             'licenses' => $licenses,
             'auditLogs' => $auditLogs,
         ]);
+    }
+
+    /**
+     * Count active employees in a tenant database.
+     *
+     * Employees live in each tenant's own database, not the landlord DB, so we
+     * query the fully-qualified `{database}.employees` table. Returns null if the
+     * count cannot be determined (missing DB/table) so the UI can show a dash
+     * rather than the page failing for one bad tenant.
+     */
+    private function countEmployees(?string $database): ?int
+    {
+        if (empty($database)) {
+            return null;
+        }
+
+        try {
+            $row = DB::connection('mysql')->selectOne(
+                "SELECT COUNT(*) AS n FROM `{$database}`.`employees` WHERE `status1` = 'Active'"
+            );
+
+            return $row ? (int) $row->n : 0;
+        } catch (\Throwable $e) {
+            Log::warning("Landlord employee count failed for {$database}: " . $e->getMessage());
+            return null;
+        }
     }
 }

@@ -125,6 +125,7 @@ function toggleExpand(id) {
                 <th class="px-5 py-4 text-left text-xs font-semibold uppercase tracking-wider text-slate-400">Company</th>
                 <th class="px-5 py-4 text-left text-xs font-semibold uppercase tracking-wider text-slate-400">Database</th>
                 <th class="px-5 py-4 text-left text-xs font-semibold uppercase tracking-wider text-slate-400">Owner</th>
+                <th class="px-5 py-4 text-center text-xs font-semibold uppercase tracking-wider text-slate-400">Employees</th>
                 <th class="px-5 py-4 text-center text-xs font-semibold uppercase tracking-wider text-slate-400">License</th>
                 <th class="px-5 py-4 text-center text-xs font-semibold uppercase tracking-wider text-slate-400">Status</th>
                 <th class="px-5 py-4 text-right text-xs font-semibold uppercase tracking-wider text-slate-400">Actions</th>
@@ -142,6 +143,11 @@ function toggleExpand(id) {
                   </td>
                   <td class="px-5 py-4">
                     <p class="text-slate-300 text-xs">{{ company.owner_google_email }}</p>
+                  </td>
+                  <td class="px-5 py-4 text-center">
+                    <span class="inline-flex items-center justify-center min-w-[2.5rem] rounded-lg bg-white/5 px-2.5 py-1 text-sm font-semibold text-slate-100 ring-1 ring-white/10">
+                      {{ company.employee_count === null ? '—' : company.employee_count }}
+                    </span>
                   </td>
                   <td class="px-5 py-4 text-center">
                     <span class="inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold"
@@ -177,7 +183,7 @@ function toggleExpand(id) {
                 </tr>
                 <!-- Expandable License Generation Row -->
                 <tr v-if="expandedCompany === company.id" class="bg-white/[0.02]">
-                  <td colspan="6" class="px-5 py-4">
+                  <td colspan="7" class="px-5 py-4">
                     <div class="flex flex-wrap items-end gap-3 pl-4 border-l-2 border-cyan-500/30">
                       <div class="flex-1 min-w-[200px]">
                         <label class="block text-xs text-slate-500 mb-1">Bind Email (optional)</label>
