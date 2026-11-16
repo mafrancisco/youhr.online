@@ -12,6 +12,7 @@ class Setting extends TenantModel
         'authorized_signatory',
         'authorized_signatory_position',
         'logo_path',
+        'dtr_format',
     ];
 
     public static function current(): self

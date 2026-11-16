@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Setting;
+use App\Services\DTRPdfService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Inertia\Inertia;
@@ -22,6 +23,7 @@ class SettingController extends Controller
                 'authorized_signatory'           => $settings->authorized_signatory,
                 'authorized_signatory_position'  => $settings->authorized_signatory_position,
                 'logo_url'                       => $settings->logoUrl(),
+                'dtr_format'                     => $settings->dtr_format ?: DTRPdfService::FORMAT_STANDARD,
             ],
         ]);
     }
@@ -34,6 +36,7 @@ class SettingController extends Controller
             'authorized_signatory'           => ['nullable', 'string', 'max:100'],
             'authorized_signatory_position'  => ['nullable', 'string', 'max:100'],
             'logo'                           => ['nullable', 'image', 'max:2048'],
+            'dtr_format'                     => ['nullable', 'in:' . implode(',', DTRPdfService::FORMATS)],
         ]);
 
         $settings = Setting::current();
@@ -43,6 +46,10 @@ class SettingController extends Controller
             'authorized_signatory'           => $request->authorized_signatory ?? '',
             'authorized_signatory_position'  => $request->authorized_signatory_position ?? '',
         ];
+
+        if ($request->filled('dtr_format')) {
+            $data['dtr_format'] = $request->dtr_format;
+        }
 
         if ($request->hasFile('logo')) {
             // Delete old logo

@@ -9,9 +9,24 @@ use Mpdf\Mpdf;
 
 class DTRPdfService
 {
+    /** Original layout (logo, overtime, remarks, two employees per page). */
+    public const FORMAT_STANDARD = 'standard';
+
+    /** Civil Service Form No. 48: two identical copies of one employee per A4 page. */
+    public const FORMAT_CSC48 = 'csc48';
+
+    public const FORMATS = [self::FORMAT_STANDARD, self::FORMAT_CSC48];
+
     private function settings(): Setting
     {
         return Setting::current();
+    }
+
+    private function format(): string
+    {
+        $format = $this->settings()->dtr_format ?? null;
+
+        return in_array($format, self::FORMATS, true) ? $format : self::FORMAT_STANDARD;
     }
 
     private function makeMpdf(): Mpdf
@@ -40,6 +55,10 @@ class DTRPdfService
      */
     public function bulk(string $startDate, string $endDate, int $empStatus, array $badgeIDs = []): string
     {
+        if ($this->format() === self::FORMAT_CSC48) {
+            return $this->form48Bulk($startDate, $endDate, $empStatus, $badgeIDs);
+        }
+
         $mpdf = $this->makeMpdf();
 
         $start_date = date('F j', strtotime($startDate));
@@ -112,6 +131,12 @@ class DTRPdfService
     // -----------------------------------------------------------------------
     public function individual(string $badgeID, string $empName, ?object $head, string $attRange, string $startDate, string $endDate, ?object $sub): string
     {
+        if ($this->format() === self::FORMAT_CSC48) {
+            $mpdf = $this->makeForm48Mpdf();
+            $this->writeForm48Employee($mpdf, $badgeID, $startDate, $endDate);
+            return $mpdf->Output($empName . ' DTR.pdf', 'S');
+        }
+
         $mpdf = $this->makeMpdf();
         $html = $this->buildDTR($badgeID, $empName, $head, $attRange, '', $startDate, $endDate, $sub);
         $mpdf->WriteHTML($html);
@@ -483,6 +508,394 @@ class DTRPdfService
         ' . $subLine . '
         Date &amp; Time Printed: ' . date('m/d/Y H:i:s') . '
         </font>';
+    }
+
+    // -----------------------------------------------------------------------
+    // Civil Service Form No. 48
+    // -----------------------------------------------------------------------
+
+    private function makeForm48Mpdf(): Mpdf
+    {
+        $mpdf = new Mpdf([
+            'format'        => 'A4',
+            'margin_top'    => 9,
+            'margin_bottom' => 8,
+            'margin_left'   => 14,
+            'margin_right'  => 14,
+            'default_font'  => 'arial',
+            'tempDir'       => storage_path('app/mpdf-tmp'),
+        ]);
+        $mpdf->SetAutoPageBreak(false);
+        $mpdf->WriteHTML($this->form48Styles(), \Mpdf\HTMLParserMode::HEADER_CSS);
+
+        return $mpdf;
+    }
+
+    private function form48Bulk(string $startDate, string $endDate, int $empStatus, array $badgeIDs): string
+    {
+        $mpdf = $this->makeForm48Mpdf();
+
+        if (!empty($badgeIDs)) {
+            $placeholders = implode(',', array_fill(0, count($badgeIDs), '?'));
+            $employees = DB::select(
+                "SELECT badgeID FROM employees WHERE empStatus = ? AND badgeID IN ({$placeholders}) ORDER BY empName",
+                array_merge([$empStatus], array_values($badgeIDs))
+            );
+        } else {
+            $employees = DB::select(
+                "SELECT badgeID FROM employees WHERE empStatus = ? ORDER BY empName",
+                [$empStatus]
+            );
+        }
+
+        $pages = 0;
+        foreach ($employees as $emp) {
+            // Same rule as the standard bulk layout: skip employees with no records.
+            $cnt = DB::selectOne("
+                SELECT COUNT(*) AS cnt FROM attendance_clean
+                WHERE BadgeNumber = ?
+                  AND DATE_FORMAT(STR_TO_DATE(AttDate, '%m/%d/%Y'), '%Y-%m-%d') BETWEEN ? AND ?
+            ", [$emp->badgeID, $startDate, $endDate])->cnt;
+
+            if ($cnt == 0) continue;
+
+            $pages += $this->writeForm48Employee($mpdf, $emp->badgeID, $startDate, $endDate);
+        }
+
+        if ($pages === 0) {
+            $mpdf->AddPage();
+            $mpdf->WriteHTML('<p style="text-align:center;">No attendance records found for the selected period.</p>');
+        }
+
+        return $mpdf->Output('', 'S');
+    }
+
+    /**
+     * Write one employee as Form 48 pages: one page per calendar month in the range,
+     * each page holding two identical copies side by side. Returns pages written.
+     */
+    private function writeForm48Employee(Mpdf $mpdf, string $badgeID, string $startDate, string $endDate): int
+    {
+        $emp = DB::selectOne(
+            "SELECT badgeID, empName, empHead, schedule, division_id, unit_id FROM employees WHERE badgeID = ? LIMIT 1",
+            [$badgeID]
+        );
+        if (!$emp) {
+            return 0;
+        }
+
+        $officialHours = $this->form48OfficialHours($emp->schedule ?? null);
+        $inCharge      = $this->form48InCharge($emp);
+
+        $pages = 0;
+        foreach ($this->form48MonthSegments($startDate, $endDate) as [$segStart, $segEnd]) {
+            $days = $this->form48Days($badgeID, $segStart, $segEnd);
+            $copy = $this->form48Copy($emp->empName, $this->form48PeriodLabel($segStart, $segEnd), $officialHours, $days, $inCharge);
+
+            $mpdf->AddPage();
+            // Two identical copies side by side, like the two-column Word template.
+            $mpdf->WriteHTML(
+                '<columns column-count="2" vAlign="" column-gap="12" />'
+                . $copy
+                . '<columnbreak />'
+                . $copy
+                . '<columns column-count="1" />',
+                \Mpdf\HTMLParserMode::HTML_BODY
+            );
+            $pages++;
+        }
+
+        return $pages;
+    }
+
+    /** Split a date range into [start, end] pairs that never cross a month boundary. */
+    private function form48MonthSegments(string $startDate, string $endDate): array
+    {
+        $start = \Carbon\Carbon::parse($startDate)->startOfDay();
+        $end   = \Carbon\Carbon::parse($endDate)->startOfDay();
+        $segments = [];
+
+        while ($start->lte($end)) {
+            $monthEnd = $start->copy()->endOfMonth()->startOfDay();
+            $segEnd   = $monthEnd->lt($end) ? $monthEnd : $end->copy();
+            $segments[] = [$start->copy(), $segEnd];
+            $start = $segEnd->copy()->addDay();
+        }
+
+        return $segments;
+    }
+
+    /** "September 1-30, 2026", or "September 5, 2026" for a single day. */
+    private function form48PeriodLabel(\Carbon\Carbon $start, \Carbon\Carbon $end): string
+    {
+        return $start->day === $end->day
+            ? $start->format('F j, Y')
+            : $start->format('F j') . '-' . $end->format('j, Y');
+    }
+
+    /** Official hours from the employee's schedule: [regular days, saturdays]. */
+    private function form48OfficialHours($scheduleId): array
+    {
+        if (!$scheduleId) {
+            return ['', ''];
+        }
+
+        $s = DB::selectOne("SELECT * FROM schedule WHERE id = ? LIMIT 1", [$scheduleId]);
+        if (!$s) {
+            return ['', ''];
+        }
+
+        $fmt = function (?string $in, ?string $bOut, ?string $bIn, ?string $out): string {
+            $t = fn (?string $v) => ($v && strtotime($v) !== false) ? date('g:i', strtotime($v)) : '';
+            [$in, $bOut, $bIn, $out] = [$t($in), $t($bOut), $t($bIn), $t($out)];
+
+            if ($in && $bOut && $bIn && $out) {
+                return "{$in}-{$bOut}, {$bIn}-{$out}";
+            }
+
+            return ($in && $out) ? "{$in}-{$out}" : '';
+        };
+
+        return [
+            $fmt($s->m_timein ?? null, $s->m_breakout ?? null, $s->m_breakin ?? null, $s->m_timeout ?? null),
+            $fmt($s->sat_timein ?? null, $s->sat_breakout ?? null, $s->sat_breakin ?? null, $s->sat_timeout ?? null),
+        ];
+    }
+
+    /**
+     * Name for the "In Charge" box: department head, then unit head, then division
+     * chief (both stored as badge IDs), then the configured authorized signatory.
+     */
+    private function form48InCharge(object $emp): string
+    {
+        if (!empty($emp->empHead)) {
+            $head = DB::selectOne("SELECT headname FROM heads WHERE headname = ? LIMIT 1", [$emp->empHead]);
+            if ($head && trim((string) $head->headname) !== '') {
+                return $head->headname;
+            }
+        }
+
+        $badgeName = function (?string $badge): string {
+            if (!$badge) return '';
+            $row = DB::selectOne("SELECT empName FROM employees WHERE badgeID = ? LIMIT 1", [$badge]);
+            return $row ? (string) $row->empName : '';
+        };
+
+        if (!empty($emp->unit_id)) {
+            $unit = DB::selectOne("SELECT unit_head FROM units WHERE id = ? LIMIT 1", [$emp->unit_id]);
+            if ($name = $badgeName($unit->unit_head ?? null)) return $name;
+        }
+
+        if (!empty($emp->division_id)) {
+            $div = DB::selectOne("SELECT division_chief FROM divisions WHERE id = ? LIMIT 1", [$emp->division_id]);
+            if ($name = $badgeName($div->division_chief ?? null)) return $name;
+        }
+
+        return (string) ($this->settings()->authorized_signatory ?? '');
+    }
+
+    /**
+     * Per-day data keyed by day of month (1-31). Each entry is either
+     * ['span' => label] for a day shown as one label across the four time cells, or
+     * ['cells' => [4 html strings], 'ut' => minutes].
+     * Uses the same sources and rules as the standard layout.
+     */
+    private function form48Days(string $badgeID, \Carbon\Carbon $start, \Carbon\Carbon $end): array
+    {
+        $records = [];
+        foreach (DB::select("
+            SELECT id, AttDate, StartTime1, StartTime2, StartTime3, StartTime4, Tardiness, undertime
+            FROM attendance_clean
+            WHERE BadgeNumber = ?
+              AND DATE_FORMAT(STR_TO_DATE(AttDate, '%m/%d/%Y'), '%Y-%m-%d') BETWEEN ? AND ?
+            ORDER BY id
+        ", [$badgeID, $start->format('Y-m-d'), $end->format('Y-m-d')]) as $r) {
+            $records[$r->AttDate] = $r; // last record per date wins, same as the standard layout
+        }
+
+        $leaveDates = [];
+        foreach (DB::select("SELECT date_start FROM leaves WHERE badgeID = ? AND status = 'Approved'", [$badgeID]) as $lr) {
+            array_push($leaveDates, ...$this->expandLeaveDates($lr->date_start ?? ''));
+        }
+        $leaveDates = array_flip(array_unique($leaveDates));
+
+        $gatePasses = [];
+        foreach (DB::select("
+            SELECT gatepass_type, gatepass_date FROM gatepass
+            WHERE badgeID = ? AND date_time_approved != '' AND date_time_approved IS NOT NULL
+              AND gatepass_date BETWEEN ? AND ?
+        ", [$badgeID, $start->format('Y-m-d'), $end->format('Y-m-d')]) as $gp) {
+            $gatePasses[$gp->gatepass_date][] = match ($gp->gatepass_type) {
+                'Official Business' => 'OB',
+                'Official Time'     => 'OT-GP',
+                'Personal'          => 'P-GP',
+                default             => 'GP',
+            };
+        }
+
+        $holidays = [];
+        foreach (DB::select("
+            SELECT actualDate, description FROM dateparameters
+            WHERE type LIKE '%Holiday%' AND actualDate BETWEEN ? AND ?
+        ", [$start->format('Y-m-d'), $end->format('Y-m-d')]) as $h) {
+            $holidays[$h->actualDate] ??= $h->description;
+        }
+
+        $wordLabels = [
+            'saturday' => 'SATURDAY', 'sunday' => 'SUNDAY',
+            'a' => 'ABSENT', 't' => 'TRAVEL', 'ob' => 'OFFICIAL BUSINESS', 'l' => 'LEAVE', 'awa' => 'AWA',
+        ];
+        $isTime = fn ($v) => is_string($v) && preg_match('/^\d{1,2}:\d{2}(:\d{2})?$/', trim($v));
+
+        $days = [];
+        for ($d = $start->copy(); $d->lte($end); $d->addDay()) {
+            $attDate = $d->format('m/d/Y');
+            $ymd     = $d->format('Y-m-d');
+            $row     = $records[$attDate] ?? null;
+            $slots   = $row ? [$row->StartTime1, $row->StartTime2, $row->StartTime3, $row->StartTime4] : ['', '', '', ''];
+            $slots   = array_map(fn ($v) => trim((string) $v), $slots);
+            $noLogs  = !array_filter($slots, fn ($v) => $v !== '');
+
+            if (isset($holidays[$ymd]) && $noLogs) {
+                $days[$d->day] = ['span' => strtoupper($holidays[$ymd])];
+                continue;
+            }
+
+            if (isset($leaveDates[$attDate]) || $slots[0] === 'L') {
+                $days[$d->day] = ['span' => 'LEAVE'];
+                continue;
+            }
+
+            // Whole-day word stored in every slot (e.g. "Saturday" x4), or a weekend with no logs.
+            $nonTime = array_values(array_unique(array_filter($slots, fn ($v) => $v !== '' && !$isTime($v))));
+            if ($noLogs && $d->isWeekend()) {
+                $days[$d->day] = ['span' => strtoupper($d->format('l'))];
+                continue;
+            }
+            if (count($nonTime) === 1 && !array_filter($slots, $isTime) && isset($wordLabels[strtolower($nonTime[0])])) {
+                $days[$d->day] = ['span' => $wordLabels[strtolower($nonTime[0])]];
+                continue;
+            }
+
+            $req = $row && $row->id
+                ? DB::selectOne("SELECT log1, log2, log3, log4 FROM request WHERE attID = ?", [$row->id])
+                : null;
+
+            $cells = [];
+            foreach ($slots as $i => $v) {
+                $text  = $isTime($v) ? date('g:i', strtotime($v)) : htmlspecialchars($v);
+                $flag  = $req && ($req->{'log' . ($i + 1)} ?? null) == '1';
+                $cells[$i] = $flag ? '<span style="color:red;">' . $text . '</span>' : $text;
+            }
+
+            // Approved gate pass: label in red in AM departure / PM arrival when not a time.
+            foreach ($gatePasses[$ymd] ?? [] as $label) {
+                foreach ([1, 2] as $i) {
+                    if (!$isTime($slots[$i])) {
+                        $cells[$i] = '<span style="color:red;">' . $label . '</span>';
+                    }
+                }
+            }
+
+            $days[$d->day] = [
+                'cells' => $cells,
+                'ut'    => $row ? (int) $row->Tardiness + (int) $row->undertime : 0,
+            ];
+        }
+
+        return $days;
+    }
+
+    private function form48Copy(string $empName, string $period, array $officialHours, array $days, string $inCharge): string
+    {
+        $e = fn ($v) => htmlspecialchars((string) $v, ENT_QUOTES);
+        [$regular, $saturday] = $officialHours;
+
+        $rows = '';
+        $totalUt = 0;
+        for ($day = 1; $day <= 31; $day++) {
+            $info = $days[$day] ?? null;
+
+            if ($info && isset($info['span'])) {
+                $rows .= '<tr><td class="day">' . $day . '</td>'
+                       . '<td colspan="4" class="span">' . $e($info['span']) . '</td>'
+                       . '<td></td><td></td></tr>';
+                continue;
+            }
+
+            $cells = $info['cells'] ?? ['', '', '', ''];
+            $ut    = $info['ut'] ?? 0;
+            $totalUt += $ut;
+
+            $rows .= '<tr><td class="day">' . $day . '</td>'
+                   . '<td>' . $cells[0] . '</td><td>' . $cells[1] . '</td>'
+                   . '<td>' . $cells[2] . '</td><td>' . $cells[3] . '</td>'
+                   . '<td>' . ($ut > 0 ? intdiv($ut, 60) : '') . '</td>'
+                   . '<td>' . ($ut > 0 ? $ut % 60 : '') . '</td></tr>';
+        }
+
+        $totHr  = $totalUt > 0 ? intdiv($totalUt, 60) : '';
+        $totMin = $totalUt > 0 ? $totalUt % 60 : '';
+
+        return '
+        <div class="f48-form">' . 'Civil Service Form No. 48' . '</div>
+        <div class="f48-title">DAILY TIME RECORD</div>
+        <div class="f48-sub">-----o0o-----</div>
+        <table class="f48-box"><tr><td class="f48-name">' . $e(strtoupper($empName)) . '</td></tr></table>
+        <div class="f48-caption">(Name)</div>
+        <table class="f48-info">
+            <tr><td class="lbl" width="38%">For the month of</td><td colspan="2" class="val">' . $e($period) . '</td></tr>
+            <tr><td class="lbl" rowspan="2">Official hours for arrival and departure</td>
+                <td class="lbl" width="24%">Regular days</td><td class="val">' . $e($regular) . '</td></tr>
+            <tr><td class="lbl">Saturdays</td><td class="val">' . $e($saturday) . '</td></tr>
+        </table>
+        <table class="f48-grid">
+            <thead>
+            <tr><th rowspan="2" width="9%" class="dayh">Day</th>
+                <th colspan="2">A.M.</th><th colspan="2">P.M.</th><th colspan="2">Undertime</th></tr>
+            <tr><th class="sm" width="14%">Arrival</th><th class="sm" width="14%">Depar-ture</th>
+                <th class="sm" width="14%">Arrival</th><th class="sm" width="14%">Depar-ture</th>
+                <th class="sm" width="11%">Hours</th><th class="sm" width="11%">Min-utes</th></tr>
+            </thead>
+            ' . $rows . '
+            <tr><td colspan="5" class="total">Total</td><td>' . $totHr . '</td><td>' . $totMin . '</td></tr>
+        </table>
+        <div class="f48-cert">I certify on my honor that the above is a true and correct report of the hours of work performed, record of which was made daily at the time of arrival and departure from office.</div>
+        <div class="f48-sign"></div>
+        <div class="f48-verified">VERIFIED as to the prescribed office hours:</div>
+        <table class="f48-box f48-headbox"><tr><td class="f48-head">' . ($inCharge !== '' ? $e(strtoupper($inCharge)) : '&nbsp;') . '</td></tr></table>
+        <div class="f48-incharge">In Charge</div>';
+    }
+
+    private function form48Styles(): string
+    {
+        return '
+            body { font-family: arial; font-size: 9pt; }
+            .f48-form { font-size: 7pt; font-style: italic; }
+            .f48-title { font-size: 12pt; font-weight: bold; text-align: center; margin-top: 3mm; }
+            .f48-sub { font-size: 7pt; text-align: center; margin-bottom: 3.5mm; }
+            table.f48-box { border-collapse: collapse; width: 100%; }
+            table.f48-box td { border: 0.8pt solid #000; padding: 1mm 1.5mm; }
+            td.f48-name { font-size: 11pt; font-weight: bold; }
+            .f48-caption { font-size: 7.5pt; text-align: center; margin-bottom: 3mm; }
+            table.f48-info { border-collapse: collapse; width: 100%; margin-bottom: 3mm; }
+            table.f48-info td { border: 0.5pt solid #000; padding: 0.6mm 1mm; font-size: 7.5pt; font-style: italic; vertical-align: middle; }
+            table.f48-info td.lbl { text-align: center; }
+            table.f48-info td.val { text-align: center; font-style: normal; }
+            table.f48-grid { border-collapse: collapse; width: 100%; }
+            table.f48-grid th, table.f48-grid td { border: 0.5pt solid #000; text-align: center; padding: 0 0.5mm; height: 5.05mm; font-size: 8pt; }
+            table.f48-grid th { font-size: 8.5pt; font-weight: bold; }
+            table.f48-grid th.sm { font-size: 6pt; }
+            table.f48-grid th.dayh { font-size: 6pt; font-weight: normal; }
+            table.f48-grid td.day { font-weight: bold; font-size: 8pt; }
+            table.f48-grid td.span { font-size: 7pt; letter-spacing: 0.3pt; }
+            table.f48-grid td.total { text-align: right; font-size: 8.5pt; }
+            .f48-cert { font-size: 7pt; font-style: italic; margin-top: 3mm; }
+            .f48-sign { border-bottom: 0.5pt solid #000; height: 8mm; margin: 0 10mm 2.5mm 10mm; }
+            .f48-verified { font-size: 7pt; font-style: italic; margin-bottom: 2.5mm; }
+            table.f48-headbox td { font-size: 8pt; font-weight: bold; text-align: center; }
+            .f48-incharge { font-size: 7pt; font-style: italic; text-align: center; margin-top: 1mm; }
+        ';
     }
 
     private function expandLeaveDates(string $leaveString): array
