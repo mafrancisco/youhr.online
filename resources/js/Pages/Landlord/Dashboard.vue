@@ -47,6 +47,15 @@ function suspendLicense(license) {
   useForm({}).post(`/landlord/licenses/${license.id}/suspend`, { preserveScroll: true })
 }
 
+function deleteCompany(company) {
+  const typed = window.prompt(
+    `This permanently deletes "${company.name}", its database (${company.database}), licenses and modules. ` +
+    `This cannot be undone. Download a Backup first.\n\nType the company code "${company.slug}" to confirm:`
+  )
+  if (typed === null) return
+  useForm({ confirm: typed }).delete(`/landlord/companies/${company.id}`, { preserveScroll: true })
+}
+
 function logout() {
   useForm({}).post('/landlord/logout')
 }
@@ -177,6 +186,10 @@ function toggleExpand(id) {
                       <button @click="toggleExpand(company.id)"
                         class="rounded-lg bg-blue-500/10 px-3 py-1.5 text-xs font-medium text-blue-400 ring-1 ring-blue-500/20 hover:bg-blue-500/20 transition">
                         + License
+                      </button>
+                      <button @click="deleteCompany(company)"
+                        class="rounded-lg bg-rose-500/10 px-3 py-1.5 text-xs font-medium text-rose-400 ring-1 ring-rose-500/20 hover:bg-rose-500/20 transition">
+                        Delete
                       </button>
                     </div>
                   </td>

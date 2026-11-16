@@ -173,6 +173,7 @@ Route::middleware(['auth', 'tenant'])->group(function () {
 Route::prefix('landlord')->middleware('landlord')->group(function () {
     Route::get('/', [LandlordDashboardController::class, 'index'])->name('landlord.dashboard');
     Route::post('/companies/{company}/status', [LandlordCompanyController::class, 'update'])->name('landlord.companies.status');
+    Route::delete('/companies/{company}', [LandlordCompanyController::class, 'destroy'])->name('landlord.companies.destroy');
     Route::get('/companies/{company}/modules', [LandlordCompanyModuleController::class, 'edit'])->name('landlord.companies.modules');
     Route::put('/companies/{company}/modules', [LandlordCompanyModuleController::class, 'update'])->name('landlord.companies.modules.update');
     Route::get('/companies/{company}/database/download', [LandlordDatabaseExportController::class, 'download'])->name('landlord.companies.database.download')->middleware('landlord.recent');
